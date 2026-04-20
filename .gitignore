@@ -1,0 +1,21 @@
+# Environment & secrets
+.env
+.credentials.json
+.setup-complete
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+*.log
+
+# Results (don't commit client data)
+results/

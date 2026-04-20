@@ -44,43 +44,33 @@ AI-powered autonomous penetration testing. Docker-in-Docker architecture for iso
 - **Scalable** — run 5+ engagements simultaneously
 - **Audit trail** — every container, command, and result is logged
 
-## Quick Start
+## Quick Start (Self-Contained)
 
-### 1. Provision Pentest Server
+### Agent Deployment (Recommended)
 ```bash
-# Any Ubuntu 24.04 server with Docker installed
-# Separate IP from your dev infrastructure
-# Minimum: 2 vCPU, 4GB RAM, 20GB disk
+# Clone the repo
+git clone https://gitlab.com/chinomonatinotenda19/athena-pentest.git /opt/athena-pentest
+cd /opt/athena-pentest
+
+# One command — handles everything:
+# - Checks prerequisites
+# - Generates secure passwords
+# - Builds tool image
+# - Deploys stack
+# - Loads skills
+./setup.sh --openrouter-key sk-or-v1-your-key-here
+
+# Load pentest skills into Athena
+./load-skills.sh
 ```
 
-### 2. Deploy the Stack
+### Manual Deployment
 ```bash
-git clone <this-repo> /opt/pentest-athena
-cd /opt/pentest-athena
+git clone https://gitlab.com/chinomonatinotenda19/athena-pentest.git /opt/athena-pentest
+cd /opt/athena-pentest
 cp .env.example .env
 # Edit .env with your OpenRouter key and passwords
 docker compose up -d
-```
-
-### 3. Verify
-```bash
-# Check all services are running
-docker compose ps
-
-# Verify tools image was built
-docker images | grep athena/pentest-tools
-
-# Test tools container
-docker run --rm athena/pentest-tools:latest nmap --version
-```
-
-### 4. Run an Engagement
-```bash
-# Launch isolated engagement container
-./scripts/run-engagement.sh target.com client-xyz-2026
-
-# Or let Athena handle it — just message on Discord:
-# "pentest target.com"
 ```
 
 ## Container Lifecycle
@@ -100,10 +90,18 @@ run-engagement.sh ──▶ Docker container ──▶ Athena orchestrates ─�
 
 ```
 pentest/
+├── setup.sh                        ← ONE COMMAND TO RULE THEM ALL
+├── load-skills.sh                  ← Load skills into Athena
 ├── docker-compose.yml              Main stack definition
 ├── .env.example                    Environment template
 ├── docker/
 │   └── pentest-tools.Dockerfile    Full tool stack image
+├── skills/                         ← Bundled pentest skills
+│   ├── pentest-recon/
+│   ├── pentest-web/
+│   ├── pentest-network/
+│   ├── pentest-report/
+│   └── pentest-orchestrator/
 ├── scripts/
 │   ├── run-engagement.sh           Launch per-client container
 │   ├── teardown-engagement.sh      Stop & archive engagement
