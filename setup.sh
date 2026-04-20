@@ -234,6 +234,17 @@ else
     exit 1
 fi
 
+# Build code security tools image
+log "Building code security tools image..."
+docker build -t athena/code-tools:latest -f docker/code-tools.Dockerfile docker/ 2>&1 | tail -20
+
+if docker images | grep -q "athena/code-tools"; then
+    IMAGE_SIZE=$(docker images athena/code-tools --format "{{.Size}}")
+    log "Code tools image built: athena/code-tools:latest ($IMAGE_SIZE)"
+else
+    warn "Code tools image build failed (non-critical, can build later)"
+fi
+
 # ============================================================================
 # Step 5: Deploy Stack
 # ============================================================================
