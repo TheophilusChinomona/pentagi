@@ -212,7 +212,7 @@ step "Step 4/6: Building Images"
 warn "First run builds both images — takes 15-25 minutes total"
 
 # Build Athena gateway from your fork
-log "Building Athena gateway from your GitLab fork..."
+log "Building Athena gateway from your hermes-agent fork..."
 docker compose build athena-gateway 2>&1 | tail -20
 
 if docker images | grep -q "athena/gateway"; then
@@ -337,7 +337,7 @@ ${CYAN}╔═══════════════════════�
 ║   • 5 pentest skills (recon, web, network, report,      ║
 ║     orchestrator)                                       ║
 ║                                                          ║
-║   Source: gitlab.com/chinomonatinotenda19/pentagi        ║
+║   Source: gitlab.com/chinomonatinotenda19/hermes-agent    ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝${NC}
 EOF

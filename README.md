@@ -4,6 +4,14 @@ AI-powered autonomous penetration testing. Docker-in-Docker architecture for iso
 
 ## Architecture
 
+Three repos working together:
+
+| Repo | Role |
+|------|------|
+| **hermes-agent** (Athena) | The AI agent — brain, skills, memory, orchestration |
+| **athena-pentest** (this repo) | Pentest toolkit — Docker stack, tools image, engagement scripts |
+| **pentagi** | Reference — pentesting methodology and approach |
+
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  PENTEST SERVER (isolated IP/network)                    │
@@ -11,26 +19,25 @@ AI-powered autonomous penetration testing. Docker-in-Docker architecture for iso
 │  ┌─────────────────────────────────────────────────┐     │
 │  │  docker compose up -d                            │     │
 │  │                                                  │     │
-│  │  ┌──────────────┐  ┌──────────────┐             │     │
-│  │  │ Athena       │  │ PostgreSQL   │             │     │
-│  │  │ Gateway      │  │ + pgvector   │             │     │
-│  │  │ (Hermes)     │  │              │             │     │
-│  │  └──────┬───────┘  └──────────────┘             │     │
-│  │         │                                        │     │
-│  │         │ Docker API                             │     │
-│  │         ▼                                        │     │
-│  │  ┌──────────────┐                                │     │
-│  │  │ Docker-in-   │                                │     │
-│  │  │ Docker       │                                │     │
-│  │  └──────┬───────┘                                │     │
-│  │         │                                        │     │
-│  │    ┌────┴────┬────────┬────────┐                │     │
-│  │    ▼         ▼        ▼        ▼                │     │
-│  │ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐            │     │
-│  │ │Client│ │Client│ │Client│ │Client│            │     │
-│  │ │ A    │ │ B    │ │ C    │ │ D    │            │     │
-│  │ └──────┘ └──────┘ └──────┘ └──────┘            │     │
-│  │  isolated containers per engagement             │     │
+│  │  ┌──────────────────┐  ┌──────────────┐         │     │
+│  │  │ Athena Gateway   │  │ PostgreSQL   │         │     │
+│  │  │ (hermes-agent    │  │ + pgvector   │         │     │
+│  │  │  fork)           │  │              │         │     │
+│  │  └────────┬─────────┘  └──────────────┘         │     │
+│  │           │                                      │     │
+│  │           │ Docker API                           │     │
+│  │           ▼                                      │     │
+│  │  ┌──────────────────┐                            │     │
+│  │  │ Docker-in-Docker │                            │     │
+│  │  └────────┬─────────┘                            │     │
+│  │           │                                      │     │
+│  │      ┌────┴────┬────────┬────────┐              │     │
+│  │      ▼         ▼        ▼        ▼              │     │
+│  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐          │     │
+│  │  │Client│ │Client│ │Client│ │Client│          │     │
+│  │  │ A    │ │ B    │ │ C    │ │ D    │          │     │
+│  │  └──────┘ └──────┘ └──────┘ └──────┘          │     │
+│  │   isolated containers per engagement           │     │
 │  └─────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────────┘
 ```

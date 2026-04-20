@@ -10,11 +10,11 @@
 
 services:
   # ============================================================================
-  # Athena Gateway — Built from your fork of Hermes
+  # Athena Gateway — Built from your hermes-agent fork
   # ============================================================================
   athena-gateway:
     build:
-      context: https://gitlab.com/chinomonatinotenda19/pentagi.git#main
+      context: https://gitlab.com/chinomonatinotenda19/hermes-agent.git#main
       dockerfile: Dockerfile
     image: athena/gateway:latest
     container_name: athena-pentest-gateway
