@@ -1,0 +1,168 @@
+# ============================================================================
+# Pentest Stack — Athena-Powered Penetration Testing
+# Docker-in-Docker architecture for isolated, per-engagement testing
+#
+# Usage:
+#   cp .env.example .env
+#   # Edit .env with your config
+#   docker compose up -d
+# ============================================================================
+
+services:
+  # ============================================================================
+  # Athena Gateway — The AI Agent Interface
+  # ============================================================================
+  athena-gateway:
+    image: vxcontrol/pentagi:latest  # or a custom Athena image when ready
+    container_name: athena-pentest-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_LISTEN_IP:-127.0.0.1}:${GATEWAY_LISTEN_PORT:-8443}:8443"
+    environment:
+      # Core
+      - PUBLIC_URL=${PUBLIC_URL:-https://localhost:8443}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://localhost:8443}
+
+      # Database
+      - DATABASE_URL=postgres://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD:-athena_pass}@postgres:5432/${POSTGRES_DB:-athena_pentest}?sslmode=disable
+
+      # LLM Provider (OpenRouter recommended for cost)
+      - OPEN_AI_KEY=${OPENROUTER_KEY}
+      - OPEN_AI_SERVER_URL=https://openrouter.ai/api/v1
+
+      # Search engines
+      - DUCKDUCKGO_ENABLED=true
+      - SPLOITUS_ENABLED=true
+
+      # Agent config
+      - EXECUTION_MONITOR_ENABLED=true
+      - AGENT_PLANNING_STEP_ENABLED=true
+      - MAX_GENERAL_AGENT_TOOL_CALLS=200
+      - MAX_LIMITED_AGENT_TOOL_CALLS=30
+
+      # Docker-in-Docker access
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_CERTDIR=/certs
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+
+      # Security
+      - COOKIE_SIGNING_SALT=${COOKIE_SIGNING_SALT:-random_salt_change_me}
+    volumes:
+      - athena-data:/data
+      - athena-ssl:/ssl
+      - pentest-results:/pentest/results
+    networks:
+      - athena-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dind:
+        condition: service_started
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "7"
+
+  # ============================================================================
+  # Docker-in-Docker — Isolated Container Execution
+  # ============================================================================
+  dind:
+    image: docker:27-dind
+    container_name: athena-pentest-dind
+    restart: unless-stopped
+    privileged: true  # Required for DinD
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - dind-certs:/certs
+      - dind-storage:/var/lib/docker
+    networks:
+      - athena-network
+    command:
+      - dockerd
+      - --host=tcp://0.0.0.0:2376
+      - --tlsverify
+      - --tlscacert=/certs/ca/ca.pem
+      - --tlscert=/certs/server/server.pem
+      - --tlskey=/certs/server/server-key.pem
+      - --storage-driver=overlay2
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ============================================================================
+  # PostgreSQL + pgvector — Vector memory + data store
+  # ============================================================================
+  postgres:
+    image: vxcontrol/pgvector:latest
+    container_name: athena-pentest-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-athena}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-athena_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-athena_pentest}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - athena-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-athena}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ============================================================================
+  # Pentest Tools Image Builder (one-shot)
+  # ============================================================================
+  pentest-tools-build:
+    image: docker:27-cli
+    container_name: athena-pentest-tools-build
+    depends_on:
+      dind:
+        condition: service_started
+    environment:
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_CERTDIR=/certs
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    volumes:
+      - dind-certs:/certs:ro
+      - ./docker:/build:ro
+    command: >
+      sh -c "
+        echo 'Waiting for DinD to be ready...'
+        until docker info > /dev/null 2>&1; do sleep 2; done
+        echo 'Building pentest-tools image...'
+        docker build -t athena/pentest-tools:latest -f /build/pentest-tools.Dockerfile /build
+        echo 'Build complete. Image: athena/pentest-tools:latest'
+      "
+    restart: "no"
+    networks:
+      - athena-network
+
+volumes:
+  athena-data:
+  athena-ssl:
+  pentest-results:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PENTEST_RESULTS_DIR:-/opt/pentest-results}
+  postgres-data:
+  dind-certs:
+  dind-storage:
+
+networks:
+  athena-network:
+    driver: bridge
