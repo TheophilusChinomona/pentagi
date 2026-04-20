@@ -10,10 +10,13 @@
 
 services:
   # ============================================================================
-  # Athena Gateway — The AI Agent Interface
+  # Athena Gateway — Built from your fork of Hermes
   # ============================================================================
   athena-gateway:
-    image: vxcontrol/pentagi:latest  # or a custom Athena image when ready
+    build:
+      context: https://gitlab.com/chinomonatinotenda19/pentagi.git#main
+      dockerfile: Dockerfile
+    image: athena/gateway:latest
     container_name: athena-pentest-gateway
     restart: unless-stopped
     ports:

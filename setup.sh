@@ -205,12 +205,25 @@ mkdir -p "$RESULTS_DIR"
 log "Results directory: $RESULTS_DIR"
 
 # ============================================================================
-# Step 4: Build Tools Image
+# Step 4: Build Images
 # ============================================================================
 
-step "Step 4/6: Building Pentest Tools Image"
-warn "This takes 10-15 minutes on first run..."
+step "Step 4/6: Building Images"
+warn "First run builds both images — takes 15-25 minutes total"
 
+# Build Athena gateway from your fork
+log "Building Athena gateway from your GitLab fork..."
+docker compose build athena-gateway 2>&1 | tail -20
+
+if docker images | grep -q "athena/gateway"; then
+    log "Gateway image built: athena/gateway:latest"
+else
+    err "Gateway image build failed"
+    exit 1
+fi
+
+# Build pentest tools image
+log "Building pentest tools image..."
 docker build -t athena/pentest-tools:latest -f docker/pentest-tools.Dockerfile docker/ 2>&1 | tail -20
 
 if docker images | grep -q "athena/pentest-tools"; then
@@ -317,12 +330,14 @@ ${CYAN}╔═══════════════════════�
 ║                                                          ║
 ║   STACK                                                 ║
 ║   ─────                                                 ║
-║   • Athena Gateway (Hermes)                             ║
+║   • Athena Gateway (built from YOUR fork)               ║
 ║   • Docker-in-Docker (sandbox engine)                   ║
 ║   • PostgreSQL + pgvector (memory)                      ║
 ║   • 20+ pentesting tools                                ║
 ║   • 5 pentest skills (recon, web, network, report,      ║
 ║     orchestrator)                                       ║
+║                                                          ║
+║   Source: gitlab.com/chinomonatinotenda19/pentagi        ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝${NC}
 EOF
