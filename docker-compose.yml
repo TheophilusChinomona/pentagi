@@ -2,64 +2,75 @@
 # Pentest Stack — Athena-Powered Penetration Testing
 # Docker-in-Docker architecture for isolated, per-engagement testing
 #
-# Usage:
-#   cp .env.example .env
-#   # Edit .env with your config
-#   docker compose up -d
+# Images are PULLED from GitLab Container Registry, not built locally.
+# Tag is selected via ${IMAGE_TAG} (default: stable). Valid values match
+# branches/promotion tags published by each repo's CI:
+#   dev | staging | prod | stable | latest | <commit-sha>
+#
+# Memory: external ParadeDB (Postgres + pgvector + pg_search). The agent
+# auto-creates schema `hermes_memory` on first connect — no manual init.
+#
+# Secrets are injected via Infisical — there is no .env file. Run with:
+#   infisical run --env=<env> -- docker compose up -d
+#
+# Required Infisical secrets (see .env.example for the full list):
+#   IMAGE_TAG, OPENROUTER_API_KEY, HERMES_MEMORY_DATABASE_URL
 # ============================================================================
 
 services:
   # ============================================================================
-  # Athena Gateway — Built from your hermes-agent fork
+  # Athena Gateway — thin extension of upstream athena image, with docker-ce-cli
+  # added so the agent's terminal_tool can talk to the sibling DinD daemon.
+  # See docker/gateway.Dockerfile for build/push instructions.
   # ============================================================================
   athena-gateway:
-    build:
-      context: https://gitlab.com/chinomonatinotenda19/hermes-agent.git#main
-      dockerfile: Dockerfile
-    image: athena/gateway:latest
+    image: registry.gitlab.com/chinomonatinotenda19/athena-pentest/gateway:${IMAGE_TAG:-stable}
     container_name: athena-pentest-gateway
     restart: unless-stopped
+    pull_policy: always
     ports:
       - "${GATEWAY_LISTEN_IP:-127.0.0.1}:${GATEWAY_LISTEN_PORT:-8443}:8443"
     environment:
-      # Core
-      - PUBLIC_URL=${PUBLIC_URL:-https://localhost:8443}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://localhost:8443}
+      # ---- Memory backend (external ParadeDB) ----
+      - HERMES_MEMORY_DATABASE_URL=${HERMES_MEMORY_DATABASE_URL}
+      - LANCEDB_EMBED_PROVIDER=${LANCEDB_EMBED_PROVIDER:-openrouter}
+      - LANCEDB_EMBED_MODEL=${LANCEDB_EMBED_MODEL:-openai/text-embedding-3-small}
 
-      # Database
-      - DATABASE_URL=postgres://${POSTGRES_USER:-athena}:${POSTGRES_PASSWORD:-athena_pass}@postgres:5432/${POSTGRES_DB:-athena_pentest}?sslmode=disable
+      # ---- LLM provider ----
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
 
-      # LLM Provider (OpenRouter recommended for cost)
-      - OPEN_AI_KEY=${OPENROUTER_KEY}
-      - OPEN_AI_SERVER_URL=https://openrouter.ai/api/v1
+      # ---- Runtime ----
+      - HERMES_HOME=/opt/data
+      - TZ=${TZ:-Africa/Johannesburg}
 
-      # Search engines
-      - DUCKDUCKGO_ENABLED=true
-      - SPLOITUS_ENABLED=true
-
-      # Agent config
-      - EXECUTION_MONITOR_ENABLED=true
-      - AGENT_PLANNING_STEP_ENABLED=true
-      - MAX_GENERAL_AGENT_TOOL_CALLS=200
-      - MAX_LIMITED_AGENT_TOOL_CALLS=30
-
-      # Docker-in-Docker access
+      # ---- Docker-in-Docker ----
+      # The agent's terminal_tool shells out to `docker` (CLI binary, not SDK)
+      # against the DinD daemon. Requires `docker.io` or `docker-ce-cli`
+      # installed in the athena image — the upstream Dockerfile does not
+      # currently install it (see README "DinD prereq" note).
       - DOCKER_HOST=tcp://dind:2376
       - DOCKER_TLS_CERTDIR=/certs
       - DOCKER_CERT_PATH=/certs/client
       - DOCKER_TLS_VERIFY=1
 
-      # Security
-      - COOKIE_SIGNING_SALT=${COOKIE_SIGNING_SALT:-random_salt_change_me}
+      # ---- Agent terminal backend ----
+      # Route the agent's `terminal` tool through the docker backend so each
+      # command runs in an isolated pentest-tools container inside DinD.
+      - TERMINAL_ENV=docker
+      - TERMINAL_DOCKER_IMAGE=${PENTEST_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/pentest-tools:${IMAGE_TAG:-stable}}
+
+      # ---- Tool image refs (passed through to engagement scripts) ----
+      - PENTEST_TOOLS_IMAGE=${PENTEST_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/pentest-tools:${IMAGE_TAG:-stable}}
+      - CODE_TOOLS_IMAGE=${CODE_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/code-tools:${IMAGE_TAG:-stable}}
     volumes:
-      - athena-data:/data
-      - athena-ssl:/ssl
+      - athena-data:/opt/data
       - pentest-results:/pentest/results
+      # DinD client cert — the agent uses this to authenticate with the
+      # docker daemon at tcp://dind:2376 (see DOCKER_CERT_PATH above).
+      - dind-certs:/certs:ro
     networks:
       - athena-network
     depends_on:
-      postgres:
-        condition: service_healthy
       dind:
         condition: service_started
     logging:
@@ -75,7 +86,7 @@ services:
     image: docker:27-dind
     container_name: athena-pentest-dind
     restart: unless-stopped
-    privileged: true  # Required for DinD
+    privileged: true
     environment:
       - DOCKER_TLS_CERTDIR=/certs
     volumes:
@@ -98,38 +109,13 @@ services:
         max-file: "3"
 
   # ============================================================================
-  # PostgreSQL + pgvector — Vector memory + data store
+  # Pentest Tools Image Prefetch (one-shot)
+  # Pulls the tools image into the DinD daemon so engagement containers
+  # start without a per-launch pull. Exits 0 once the pull completes.
   # ============================================================================
-  postgres:
-    image: vxcontrol/pgvector:latest
-    container_name: athena-pentest-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-athena}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-athena_pass}
-      - POSTGRES_DB=${POSTGRES_DB:-athena_pentest}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - athena-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-athena}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
-
-  # ============================================================================
-  # Pentest Tools Image Builder (one-shot)
-  # ============================================================================
-  pentest-tools-build:
+  pentest-tools-prefetch:
     image: docker:27-cli
-    container_name: athena-pentest-tools-build
+    container_name: athena-pentest-tools-prefetch
     depends_on:
       dind:
         condition: service_started
@@ -138,27 +124,25 @@ services:
       - DOCKER_TLS_CERTDIR=/certs
       - DOCKER_CERT_PATH=/certs/client
       - DOCKER_TLS_VERIFY=1
+      - PENTEST_TOOLS_IMAGE=${PENTEST_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/pentest-tools:${IMAGE_TAG:-stable}}
     volumes:
       - dind-certs:/certs:ro
-      - ./docker:/build:ro
     command: >
       sh -c "
-        echo 'Waiting for DinD to be ready...'
-        until docker info > /dev/null 2>&1; do sleep 2; done
-        echo 'Building pentest-tools image...'
-        docker build -t athena/pentest-tools:latest -f /build/pentest-tools.Dockerfile /build
-        echo 'Build complete. Image: athena/pentest-tools:latest'
+        until docker info > /dev/null 2>&1; do sleep 2; done;
+        echo 'Pulling pentest-tools image into DinD: '\"$$PENTEST_TOOLS_IMAGE\";
+        docker pull \"$$PENTEST_TOOLS_IMAGE\";
       "
     restart: "no"
     networks:
       - athena-network
 
   # ============================================================================
-  # Code Security Tools Image Builder (one-shot)
+  # Code Security Tools Image Prefetch (one-shot)
   # ============================================================================
-  code-tools-build:
+  code-tools-prefetch:
     image: docker:27-cli
-    container_name: athena-code-tools-build
+    container_name: athena-code-tools-prefetch
     depends_on:
       dind:
         condition: service_started
@@ -167,16 +151,14 @@ services:
       - DOCKER_TLS_CERTDIR=/certs
       - DOCKER_CERT_PATH=/certs/client
       - DOCKER_TLS_VERIFY=1
+      - CODE_TOOLS_IMAGE=${CODE_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/code-tools:${IMAGE_TAG:-stable}}
     volumes:
       - dind-certs:/certs:ro
-      - ./docker:/build:ro
     command: >
       sh -c "
-        echo 'Waiting for DinD to be ready...'
-        until docker info > /dev/null 2>&1; do sleep 2; done
-        echo 'Building code-tools image...'
-        docker build -t athena/code-tools:latest -f /build/code-tools.Dockerfile /build
-        echo 'Build complete. Image: athena/code-tools:latest'
+        until docker info > /dev/null 2>&1; do sleep 2; done;
+        echo 'Pulling code-tools image into DinD: '\"$$CODE_TOOLS_IMAGE\";
+        docker pull \"$$CODE_TOOLS_IMAGE\";
       "
     restart: "no"
     networks:
@@ -184,14 +166,12 @@ services:
 
 volumes:
   athena-data:
-  athena-ssl:
   pentest-results:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: ${PENTEST_RESULTS_DIR:-/opt/pentest-results}
-  postgres-data:
   dind-certs:
   dind-storage:
 

@@ -21,7 +21,7 @@ step() { echo -e "\n${CYAN}═══ $1 ═══${NC}\n"; }
 
 TARGET="${1:?Usage: $0 <target> [engagement-id]}"
 ENGAGEMENT_ID="${2:-engagement-$(date +%Y%m%d-%H%M%S)}"
-IMAGE="athena/pentest-tools:latest"
+IMAGE="${PENTEST_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/pentest-tools:${IMAGE_TAG:-stable}}"
 RESULTS_DIR="/opt/pentest-results/${ENGAGEMENT_ID}"
 
 mkdir -p "$RESULTS_DIR"
