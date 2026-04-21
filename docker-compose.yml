@@ -1,11 +1,19 @@
 # ============================================================================
 # Pentest Stack — Athena-Powered Penetration Testing
-# Docker-in-Docker architecture for isolated, per-engagement testing
+#
+# Architecture: the gateway shares the *host's* docker daemon via the
+# /var/run/docker.sock bind-mount. The agent's terminal_tool spawns engagement
+# containers as siblings of the gateway, on the same host docker daemon.
+#
+# Why not DinD: runc 1.3 + Linux 6.6+ fails to write
+# net.ipv4.ip_unprivileged_port_start when creating new netns inside a
+# privileged container, even with systempaths/apparmor/seccomp unconfined.
+# This is a dedicated single-purpose pentest server, so the host *is* the
+# sandbox — bind-mount is appropriate. On a multi-tenant host, switch to
+# sysbox runtime instead.
 #
 # Images are PULLED from GitLab Container Registry, not built locally.
-# Tag is selected via ${IMAGE_TAG} (default: stable). Valid values match
-# branches/promotion tags published by each repo's CI:
-#   dev | staging | prod | stable | latest | <commit-sha>
+# Tag is selected via ${IMAGE_TAG} (default: stable).
 #
 # Memory: external ParadeDB (Postgres + pgvector + pg_search). The agent
 # auto-creates schema `hermes_memory` on first connect — no manual init.
@@ -14,13 +22,16 @@
 #   infisical run --env=<env> -- docker compose up -d
 #
 # Required Infisical secrets (see .env.example for the full list):
-#   IMAGE_TAG, OPENROUTER_API_KEY, HERMES_MEMORY_DATABASE_URL
+#   IMAGE_TAG, OPENROUTER_API_KEY, ATHENA_MEMORY_DB_URL
+# Plus on the host: DOCKER_GID env var (or set in Infisical) — the GID of
+# the host's `docker` group, so the gateway's hermes user can read the socket.
 # ============================================================================
 
 services:
   # ============================================================================
-  # Athena Gateway — thin extension of upstream athena image, with docker-ce-cli
-  # added so the agent's terminal_tool can talk to the sibling DinD daemon.
+  # Athena Gateway — thin extension of upstream athena image with docker-ce-cli
+  # added so the agent's terminal_tool can shell out to `docker` against the
+  # host docker daemon (mounted via /var/run/docker.sock).
   # See docker/gateway.Dockerfile for build/push instructions.
   # ============================================================================
   athena-gateway:
@@ -28,11 +39,47 @@ services:
     container_name: athena-pentest-gateway
     restart: unless-stopped
     pull_policy: always
-    ports:
-      - "${GATEWAY_LISTEN_IP:-127.0.0.1}:${GATEWAY_LISTEN_PORT:-8443}:8443"
+    # No `ports:` block — network_mode: host attaches directly to host net,
+    # and the messaging gateway has no inbound HTTP listener anyway.
+    # `hermes gateway run` is the messaging-gateway foreground entry point
+    # (the image's default ENTRYPOINT/CMD launches the interactive CLI, which
+    # exits without a TTY and triggers a restart loop). The gateway connects
+    # outbound to Discord/Telegram/WhatsApp using credentials supplied via
+    # Infisical — there is no inbound HTTP server to expose by default.
+    #
+    # Entrypoint override: this kernel blocks AF_UNIX socketpair(2) for the
+    # non-root `hermes` user (UID 10000) regardless of seccomp/AppArmor
+    # settings (root in same container works fine). Bypassing the image's
+    # gosu-drop step. Acceptable on a dedicated pentest box where the
+    # mounted /var/run/docker.sock already grants container-root host-root
+    # equivalence.
+    user: "0:0"
+    entrypoint: ["/opt/hermes/.venv/bin/hermes"]
+    command: ["gateway", "run"]
+    # network_mode: host bypasses a Linux 6.8 + runc/crun kernel bug where
+    # creating new netns inside any container fails with EPERM on the sysctl
+    # net.ipv4.ip_unprivileged_port_start. Tried: docker.io vs upstream
+    # docker-ce 29, runc vs crun, disabled AppArmor profiles for both
+    # runtimes, all security_opts unconfined. Nothing else worked on this
+    # host kernel. Acceptable on a dedicated pentest box. Revisit when
+    # the host kernel is updated past the regression.
+    network_mode: host
+    # Same kernel/runtime regression as above leaks into seccomp's default
+    # filter on this host, blocking socketpair(2) which Python asyncio needs
+    # at boot. Unconfining seccomp is acceptable on a dedicated pentest box.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    # Add the gateway's hermes user to the host's docker group so the bind-
+    # mounted socket is readable. DOCKER_GID must match `getent group docker`
+    # on the host (default 102 on Kali/Debian).
+    group_add:
+      - "${DOCKER_GID:-102}"
     environment:
       # ---- Memory backend (external ParadeDB) ----
-      - HERMES_MEMORY_DATABASE_URL=${HERMES_MEMORY_DATABASE_URL}
+      # Secret is stored in Infisical as ATHENA_MEMORY_DB_URL; remapped here
+      # to the env var name the agent's athena-memory plugin actually reads.
+      - HERMES_MEMORY_DATABASE_URL=${ATHENA_MEMORY_DB_URL}
       - LANCEDB_EMBED_PROVIDER=${LANCEDB_EMBED_PROVIDER:-openrouter}
       - LANCEDB_EMBED_MODEL=${LANCEDB_EMBED_MODEL:-openai/text-embedding-3-small}
 
@@ -43,19 +90,10 @@ services:
       - HERMES_HOME=/opt/data
       - TZ=${TZ:-Africa/Johannesburg}
 
-      # ---- Docker-in-Docker ----
-      # The agent's terminal_tool shells out to `docker` (CLI binary, not SDK)
-      # against the DinD daemon. Requires `docker.io` or `docker-ce-cli`
-      # installed in the athena image — the upstream Dockerfile does not
-      # currently install it (see README "DinD prereq" note).
-      - DOCKER_HOST=tcp://dind:2376
-      - DOCKER_TLS_CERTDIR=/certs
-      - DOCKER_CERT_PATH=/certs/client
-      - DOCKER_TLS_VERIFY=1
-
       # ---- Agent terminal backend ----
       # Route the agent's `terminal` tool through the docker backend so each
-      # command runs in an isolated pentest-tools container inside DinD.
+      # command runs in an isolated pentest-tools container on the host
+      # docker daemon (via the /var/run/docker.sock mount below).
       - TERMINAL_ENV=docker
       - TERMINAL_DOCKER_IMAGE=${PENTEST_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/pentest-tools:${IMAGE_TAG:-stable}}
 
@@ -65,104 +103,15 @@ services:
     volumes:
       - athena-data:/opt/data
       - pentest-results:/pentest/results
-      # DinD client cert — the agent uses this to authenticate with the
-      # docker daemon at tcp://dind:2376 (see DOCKER_CERT_PATH above).
-      - dind-certs:/certs:ro
-    networks:
-      - athena-network
-    depends_on:
-      dind:
-        condition: service_started
+      # Host docker socket — the agent's terminal_tool reaches the host
+      # daemon through here. Mount it RW so the agent can spawn containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # No `networks:` block — network_mode: host attaches directly to host net.
     logging:
       driver: json-file
       options:
         max-size: "50m"
         max-file: "7"
-
-  # ============================================================================
-  # Docker-in-Docker — Isolated Container Execution
-  # ============================================================================
-  dind:
-    image: docker:27-dind
-    container_name: athena-pentest-dind
-    restart: unless-stopped
-    privileged: true
-    environment:
-      - DOCKER_TLS_CERTDIR=/certs
-    volumes:
-      - dind-certs:/certs
-      - dind-storage:/var/lib/docker
-    networks:
-      - athena-network
-    command:
-      - dockerd
-      - --host=tcp://0.0.0.0:2376
-      - --tlsverify
-      - --tlscacert=/certs/ca/ca.pem
-      - --tlscert=/certs/server/server.pem
-      - --tlskey=/certs/server/server-key.pem
-      - --storage-driver=overlay2
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
-
-  # ============================================================================
-  # Pentest Tools Image Prefetch (one-shot)
-  # Pulls the tools image into the DinD daemon so engagement containers
-  # start without a per-launch pull. Exits 0 once the pull completes.
-  # ============================================================================
-  pentest-tools-prefetch:
-    image: docker:27-cli
-    container_name: athena-pentest-tools-prefetch
-    depends_on:
-      dind:
-        condition: service_started
-    environment:
-      - DOCKER_HOST=tcp://dind:2376
-      - DOCKER_TLS_CERTDIR=/certs
-      - DOCKER_CERT_PATH=/certs/client
-      - DOCKER_TLS_VERIFY=1
-      - PENTEST_TOOLS_IMAGE=${PENTEST_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/pentest-tools:${IMAGE_TAG:-stable}}
-    volumes:
-      - dind-certs:/certs:ro
-    command: >
-      sh -c "
-        until docker info > /dev/null 2>&1; do sleep 2; done;
-        echo 'Pulling pentest-tools image into DinD: '\"$$PENTEST_TOOLS_IMAGE\";
-        docker pull \"$$PENTEST_TOOLS_IMAGE\";
-      "
-    restart: "no"
-    networks:
-      - athena-network
-
-  # ============================================================================
-  # Code Security Tools Image Prefetch (one-shot)
-  # ============================================================================
-  code-tools-prefetch:
-    image: docker:27-cli
-    container_name: athena-code-tools-prefetch
-    depends_on:
-      dind:
-        condition: service_started
-    environment:
-      - DOCKER_HOST=tcp://dind:2376
-      - DOCKER_TLS_CERTDIR=/certs
-      - DOCKER_CERT_PATH=/certs/client
-      - DOCKER_TLS_VERIFY=1
-      - CODE_TOOLS_IMAGE=${CODE_TOOLS_IMAGE:-registry.gitlab.com/chinomonatinotenda19/athena-pentest/code-tools:${IMAGE_TAG:-stable}}
-    volumes:
-      - dind-certs:/certs:ro
-    command: >
-      sh -c "
-        until docker info > /dev/null 2>&1; do sleep 2; done;
-        echo 'Pulling code-tools image into DinD: '\"$$CODE_TOOLS_IMAGE\";
-        docker pull \"$$CODE_TOOLS_IMAGE\";
-      "
-    restart: "no"
-    networks:
-      - athena-network
 
 volumes:
   athena-data:
@@ -172,9 +121,3 @@ volumes:
       type: none
       o: bind
       device: ${PENTEST_RESULTS_DIR:-/opt/pentest-results}
-  dind-certs:
-  dind-storage:
-
-networks:
-  athena-network:
-    driver: bridge
