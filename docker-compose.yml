@@ -86,6 +86,14 @@ services:
       # ---- LLM provider ----
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
 
+      # ---- Messaging: Discord ----
+      # DISCORD_BOT_TOKEN passes through directly (Infisical name matches).
+      # The other two are stored under different Infisical names; remap here
+      # to the env var names hermes_gateway actually reads.
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_ALLOWED_USERS=${DISCORD_USER_ID}
+      - DISCORD_ALLOWED_CHANNELS=${DISCORD_CHANNEL_ID}
+
       # ---- Runtime ----
       - HERMES_HOME=/opt/data
       - TZ=${TZ:-Africa/Johannesburg}
