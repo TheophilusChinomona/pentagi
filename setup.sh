@@ -12,6 +12,7 @@
 #   - .infisical.json present in this directory (`infisical init`)
 #   - The Infisical environment you pass with --env contains:
 #       OPENROUTER_API_KEY, HERMES_MEMORY_DATABASE_URL
+#     (ATHENA_MEMORY_DB_URL is accepted as a backward-compatible alias)
 #     and optionally: IMAGE_TAG, PUBLIC_URL, GATEWAY_LISTEN_IP,
 #                     GATEWAY_LISTEN_PORT, CORS_ORIGINS, TZ,
 #                     LANCEDB_EMBED_PROVIDER, LANCEDB_EMBED_MODEL
@@ -122,24 +123,49 @@ log "Infisical project: linked"
 
 step "Step 2/5: Verifying Infisical Secrets (env=$INFISICAL_ENV)"
 
-REQUIRED_SECRETS=(OPENROUTER_API_KEY HERMES_MEMORY_DATABASE_URL)
 MISSING=()
 
-# `infisical secrets get` exits 0 even when the secret is missing — only the
-# value is empty. So we check stdout, not exit code.
-for secret in "${REQUIRED_SECRETS[@]}"; do
-    val="$(infisical secrets get "$secret" --env="$INFISICAL_ENV" --silent --plain 2>/dev/null | head -1)"
-    if [[ -n "$val" ]]; then
-        log "  ✓ $secret"
-    else
-        err "  ✗ $secret (missing)"
-        MISSING+=("$secret")
+get_secret_value() {
+    local name="$1"
+    infisical secrets get "$name" --env="$INFISICAL_ENV" --silent --plain 2>/dev/null | head -1
+}
+
+require_secret() {
+    local canonical="$1"
+    shift
+    local names=("$canonical" "$@")
+    local value=""
+    local used_name=""
+    for name in "${names[@]}"; do
+        value="$(get_secret_value "$name")"
+        if [[ -n "$value" ]]; then
+            used_name="$name"
+            break
+        fi
+    done
+
+    if [[ -z "$value" ]]; then
+        err "  ✗ $canonical (missing)"
+        MISSING+=("$canonical")
+        return 1
     fi
-done
+
+    export "$canonical=$value"
+    if [[ "$used_name" == "$canonical" ]]; then
+        log "  ✓ $canonical"
+    else
+        log "  ✓ $canonical (from alias: $used_name)"
+    fi
+    return 0
+}
+
+require_secret OPENROUTER_API_KEY
+require_secret HERMES_MEMORY_DATABASE_URL ATHENA_MEMORY_DB_URL
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     err "Add the missing secrets in the Infisical UI for env '$INFISICAL_ENV', then re-run."
-    err "  HERMES_MEMORY_DATABASE_URL — full connection URL to your ParadeDB instance"
+    err "  HERMES_MEMORY_DATABASE_URL (or ATHENA_MEMORY_DB_URL alias) — full connection URL"
+    err "    to your ParadeDB instance"
     err "    (postgresql://user:pass@host:5432/dbname). The agent auto-creates the"
     err "    'hermes_memory' schema on first connect."
     err "  OPENROUTER_API_KEY — your OpenRouter key (used for both LLM and embeddings)"

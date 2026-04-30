@@ -1,32 +1,15 @@
 # ============================================================================
-# Gateway extension — adds docker-ce-cli to the upstream athena image so the
-# agent's terminal_tool can shell out to `docker` against the sibling DinD
-# daemon defined in docker-compose.yml.
-#
-# This is the "bootstrap" gateway. Long-term plan: have Athena self-strip
-# the upstream image (drop messaging/voice/web/playwright bloat) and replace
-# this with a fully custom pentest gateway. Until then, this thin layer
-# unblocks docker-in-docker without modifying the upstream athena repo.
-#
-# Build (locally, from athena-pentest repo root):
-#   docker build \
-#     --build-arg IMAGE_TAG=stable \
-#     -t registry.gitlab.com/chinomonatinotenda19/athena-pentest/gateway:stable \
-#     -f docker/gateway.Dockerfile docker/
-#
-# Push (requires `docker login registry.gitlab.com` with a deploy or PAT
-#       scoped to write_registry on athena-pentest):
-#   docker push registry.gitlab.com/chinomonatinotenda19/athena-pentest/gateway:stable
+# Athena Hermes Super-Agent gateway image
+# - Base: upstream Hermes/Athena runtime image
+# - Adds: docker CLI, Athena engagement scripts, Athena skills, super-agent
+#   command wrappers, and a bootstrap entrypoint that prepares runtime paths.
 # ============================================================================
 
-ARG IMAGE_TAG=stable
-FROM registry.gitlab.com/chinomonatinotenda19/athena:${IMAGE_TAG}
+ARG BASE_IMAGE=registry.gitlab.com/chinomonatinotenda19/athena:stable
+FROM ${BASE_IMAGE}
 
 USER root
 
-# Install docker-ce-cli (client only, ~30MB) from Docker's official apt repo.
-# Not docker.io — that pulls the full daemon stub (~80MB) we never start, since
-# the daemon is the sibling `dind` service the gateway talks to over TCP+TLS.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg && \
     install -m 0755 -d /etc/apt/keyrings && \
@@ -41,6 +24,19 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Hand control back to the upstream image's runtime user. The athena entrypoint
-# (/opt/hermes/docker/entrypoint.sh) is unchanged and inherited from the base.
+# Bundle Athena scripts and skills into the gateway image.
+COPY --chown=hermes:hermes ../scripts /opt/athena/scripts
+COPY --chown=hermes:hermes ../skills /opt/athena/skills
+COPY --chown=hermes:hermes ../docker/entrypoint-super-agent.sh /opt/athena/entrypoint-super-agent.sh
+
+# Hermes can call these wrappers via terminal commands:
+# - athena-engage <target> [engagement-id]
+# - athena-teardown <engagement-id>
+# - athena-code-audit <repo-path-or-url> [output-dir]
+RUN chmod +x /opt/athena/scripts/*.sh /opt/athena/entrypoint-super-agent.sh && \
+    ln -sf /opt/athena/scripts/run-engagement.sh /usr/local/bin/athena-engage && \
+    ln -sf /opt/athena/scripts/teardown-engagement.sh /usr/local/bin/athena-teardown && \
+    ln -sf /opt/athena/scripts/run-code-audit.sh /usr/local/bin/athena-code-audit
+
 USER hermes
+ENTRYPOINT ["/opt/athena/entrypoint-super-agent.sh"]

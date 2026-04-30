@@ -1,16 +1,13 @@
 # Pentest Toolkit — Athena
 
-AI-powered autonomous penetration testing. Docker-in-Docker architecture for isolated, per-client engagements.
+AI-powered autonomous penetration testing with a Hermes-based gateway that orchestrates isolated, per-engagement tool containers.
 
 ## Architecture
 
 Three repos working together:
-
-| Repo | Role |
-|------|------|
-| **hermes-agent** (Athena) | The AI agent — brain, skills, memory, orchestration |
-| **athena-pentest** (this repo) | Pentest toolkit — Docker stack, tools image, engagement scripts |
-| **pentagi** | Reference — pentesting methodology and approach |
+- **hermes-agent** (Athena): AI agent runtime, tools, memory, orchestration
+- **athena-pentest** (this repo): Docker stack, gateway extensions, pentest tools, engagement scripts
+- **pentagi**: reference pentesting methodology
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -21,17 +18,12 @@ Three repos working together:
 │  │                                                  │     │
 │  │  ┌──────────────────┐  ┌──────────────┐         │     │
 │  │  │ Athena Gateway   │  │ PostgreSQL   │         │     │
-│  │  │ (hermes-agent    │  │ + pgvector   │         │     │
-│  │  │  fork)           │  │              │         │     │
+│  │  │ (Hermes runtime) │  │ + pgvector   │         │     │
 │  │  └────────┬─────────┘  └──────────────┘         │     │
 │  │           │                                      │     │
-│  │           │ Docker API                           │     │
+│  │           │ Docker socket                        │     │
 │  │           ▼                                      │     │
-│  │  ┌──────────────────┐                            │     │
-│  │  │ Docker-in-Docker │                            │     │
-│  │  └────────┬─────────┘                            │     │
-│  │           │                                      │     │
-│  │      ┌────┴────┬────────┬────────┐              │     │
+│  │      ┌─────────┴────────┬────────┐              │     │
 │  │      ▼         ▼        ▼        ▼              │     │
 │  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐          │     │
 │  │  │Client│ │Client│ │Client│ │Client│          │     │
@@ -42,7 +34,7 @@ Three repos working together:
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Why Docker-in-Docker
+## Why Orchestrator + Tool Containers
 
 - **Per-client isolation** — each engagement gets its own container + network
 - **No cross-contamination** — Client A's traffic never touches Client B's scope
@@ -87,13 +79,16 @@ infisical run --env=prod -- docker compose logs -f
 infisical run --env=prod -- docker compose down
 ```
 
-### Docker-in-Docker (gateway extension image)
+### Gateway image (Hermes super-agent extension)
 
-The compose runs a `dind` service and points the gateway at it via
-`DOCKER_HOST=tcp://dind:2376` + TLS client cert mounted at `/certs/client`.
-The agent's `terminal` tool (set via `TERMINAL_ENV=docker`) then runs every
-command in an isolated container inside DinD, using `TERMINAL_DOCKER_IMAGE`
-(defaults to your pentest-tools image).
+The compose builds a local gateway image (`docker/gateway.Dockerfile`) that:
+- starts from the upstream Athena/Hermes runtime image
+- installs `docker-ce-cli` so Hermes can launch tool containers
+- bundles Athena scripts and skills
+- exposes wrapper commands for Hermes tool usage:
+  - `athena-engage`
+  - `athena-teardown`
+  - `athena-code-audit`
 
 Athena's `tools/environments/docker.py` shells out to the `docker` CLI binary,
 which the upstream `athena` image does not include. Rather than fork the athena
@@ -103,7 +98,7 @@ repo, this stack pulls a thin extension image:
 - **Extension**: `registry.gitlab.com/chinomonatinotenda19/athena-pentest/gateway:${IMAGE_TAG}` (this stack uses the extension)
 - **Diff**: just installs `docker-ce-cli` from Docker's official apt repo
 
-Build & push the extension image (one-time per `IMAGE_TAG`):
+Build & push the extension image (optional, if you want registry-hosted deploys):
 
 ```bash
 # From a host that has Docker installed and is logged into the registry:
@@ -117,10 +112,7 @@ docker build \
 docker push registry.gitlab.com/chinomonatinotenda19/athena-pentest/gateway:stable
 ```
 
-Long-term plan: have Athena self-strip the upstream image (drop messaging /
-voice / web / playwright bloat she doesn't need for pentesting) and replace
-this thin extension with a fully custom pentest gateway. See `docker/gateway.Dockerfile`
-for the comment trail.
+Local `docker compose up` will build this image directly in this repo.
 
 ### Image tags / registry CI prereq
 The compose references `${IMAGE_TAG:-stable}` against three images:
@@ -183,7 +175,7 @@ pentest/
 ## Engagement Workflow
 
 1. **You (Discord):** "pentest acme-corp.com — web application focus"
-2. **Athena:** Creates engagement container, runs recon
+2. **Athena:** runs `athena-engage`, creates engagement container, runs recon
 3. **Athena:** "Found 15 subdomains, 8 live hosts. Proceed to scanning?"
 4. **You:** "yes"
 5. **Athena:** Runs nuclei, sqlmap, web testing
@@ -191,7 +183,22 @@ pentest/
 7. **You:** "yes"
 8. **Athena:** Validates findings, collects evidence
 9. **Athena:** Generates report, sends PDF on Discord
-10. **Athena:** Tears down container, archives evidence
+10. **Athena:** runs `athena-teardown`, archives evidence
+
+## Hermes command surface
+
+Inside `athena-gateway`, Hermes can run these engagement commands:
+
+```bash
+athena-engage target.com client-abc-2026
+athena-code-audit https://github.com/org/repo.git
+athena-teardown client-abc-2026
+```
+
+These wrappers map to:
+- `scripts/run-engagement.sh`
+- `scripts/run-code-audit.sh`
+- `scripts/teardown-engagement.sh`
 
 ## Safety
 

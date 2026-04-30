@@ -13,7 +13,8 @@ set -euo pipefail
 ENGAGEMENT_ID="${1:?Usage: $0 <engagement-id>}"
 CONTAINER_NAME="pentest-${ENGAGEMENT_ID}"
 NETWORK_NAME="pentest-${ENGAGEMENT_ID}"
-RESULTS_DIR="/opt/pentest-results/${ENGAGEMENT_ID}"
+RESULTS_ROOT="${PENTEST_RESULTS_ROOT:-/pentest/results}"
+RESULTS_DIR="${RESULTS_ROOT}/${ENGAGEMENT_ID}"
 AUDIT_LOG="${RESULTS_DIR}/audit.log"
 
 audit_log() {
@@ -89,9 +90,9 @@ fi
 # ============================================================================
 
 if [[ -d "$RESULTS_DIR" ]]; then
-    ARCHIVE="/opt/pentest-results/${ENGAGEMENT_ID}-evidence-$(date +%Y%m%d).tar.gz"
+    ARCHIVE="${RESULTS_ROOT}/${ENGAGEMENT_ID}-evidence-$(date +%Y%m%d).tar.gz"
     echo "Archiving evidence to ${ARCHIVE}..."
-    tar czf "$ARCHIVE" -C /opt/pentest-results "$ENGAGEMENT_ID" 2>/dev/null
+    tar czf "$ARCHIVE" -C "${RESULTS_ROOT}" "$ENGAGEMENT_ID" 2>/dev/null
     audit_log "EVIDENCE_ARCHIVED archive=${ARCHIVE}"
     echo "Evidence archived: $ARCHIVE"
 fi
