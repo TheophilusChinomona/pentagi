@@ -5,12 +5,13 @@
 #   make build-tools     Build custom pentest-tools image (Dockerfile.pentest)
 #   make up              Start the main stack (pentagi + pgvector + scraper)
 #   make down            Stop the main stack
+#   make load-skills     Copy skill files to ~/.hermes/skills/ (for Hermes agents)
 #   make test-tools      Smoke-test tools inside the pentest-tools image
 #   make shell           Interactive bash inside pentest-tools image
 #   make logs            Follow pentagi backend logs
 # ============================================================================
 
-.PHONY: help build-tools up down logs shell test-tools clean
+.PHONY: help build-tools up down logs shell test-tools load-skills clean
 
 help:
 	@echo "PentAGI Fork — Pentest Toolkit"
@@ -21,6 +22,7 @@ help:
 	@echo "  down          Stop the main stack"
 	@echo "  logs          Follow pentagi backend logs"
 	@echo "  shell         Interactive bash inside pentest-tools:latest"
+	@echo "  load-skills   Copy skill files to ~/.hermes/skills/ (for Hermes agents)"
 	@echo "  test-tools    Smoke-test tools inside pentest-tools:latest"
 	@echo "  clean         Remove built image"
 	@echo ""
@@ -88,6 +90,20 @@ test-tools:
 	  hashcat --version 2>&1 | head -1 && \
 	  searchsploit -h 2>&1 | head -1 && \
 	  echo "=== OK ---"'
+
+# Copy skill files to ~/.hermes/skills/ for Hermes agents
+# Skills describe how agents use the PentAGI API and pentest-tools image
+load-skills:
+	@echo "Loading skills into ~/.hermes/skills/"
+	@mkdir -p ~/.hermes/skills
+	@for skill in pentagi-stack pentagi-api pentest-tools; do \
+	  if [ -d "skills/$$skill" ] && [ -f "skills/$$skill/SKILL.md" ]; then \
+	    echo "  $$skill"; \
+	    rm -rf ~/.hermes/skills/$$skill; \
+	    cp -r skills/$$skill ~/.hermes/skills/; \
+	  fi; \
+	done
+	@echo "Done. Skills loaded: pentagi-stack, pentagi-api, pentest-tools"
 
 # Remove built image and stopped containers
 clean:

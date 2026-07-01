@@ -106,6 +106,18 @@ docker run --rm pentest-tools:latest nmap -sV scanme.nmap.org
 | `frontend/` | React/TypeScript UI source |
 | `scripts/aggregate-results.sh` | Utility to parse tool outputs into findings JSON |
 
+## Agent Skills
+
+Three skill files in `skills/` describe how agents interact with the stack:
+
+| Skill | What It Describes |
+|-------|-------------------|
+| `pentagi-stack` | Stack discovery, API URL, quick-start workflows |
+| `pentagi-api` | REST/GraphQL API endpoints, auth, flow lifecycle, Python client |
+| `pentest-tools` | Full tool reference by category with Docker exec examples |
+
+To load into Hermes: `make load-skills`
+
 ## Upstream Sync
 
 This repo tracks `vxcontrol/pentagi`. To sync upstream changes:
