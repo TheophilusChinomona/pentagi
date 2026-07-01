@@ -15,10 +15,11 @@ The stack runs as a group of Docker Compose services:
 | Service | Purpose |
 |---------|---------|
 | `pentagi` | Go backend + AI agents + REST/GraphQL API |
-| `pgvector` | PostgreSQL + pgvector for memory/semantic search |
-| `pgexporter` | Prometheus metrics for PostgreSQL |
 | `scraper` | Headless browser for web intelligence |
 | `pentest-tools` | **Custom** tool image (build target, built on demand) |
+
+**No bundled database** — you must provide an external PostgreSQL / ParadeDB
+instance with pgvector extension. Set `DATABASE_URL` in `.env`.
 
 Optional stacks (separate compose files):
 - `docker-compose-langfuse.yml` — LLM analytics
@@ -33,16 +34,14 @@ The `pentagi` service uses `DOCKER_DEFAULT_IMAGE_FOR_PENTEST=pentest-tools:lates
 # 1. Build the custom pentest tools image
 docker compose build pentest-tools
 
-# 2. Copy .env and configure (at minimum an LLM API key)
+# 2. Copy .env and configure
 cp .env.example .env
-# Edit .env — set LLM_SERVER_URL, LLM_SERVER_KEY, LLM_SERVER_PROVIDER
+# You MUST set at minimum:
+#   - DATABASE_URL — point to your external ParadeDB instance
+#   - LLM_SERVER_URL, LLM_SERVER_KEY, LLM_SERVER_PROVIDER — LLM provider
 
-# 3a. Start with bundled pgvector (default)
+# 3. Start the stack
 make up
-
-# 3b. OR start with external ParadeDB/PostgreSQL
-# Set DATABASE_URL in .env first
-make up-external
 
 # 4. Open the UI
 open https://localhost:8443

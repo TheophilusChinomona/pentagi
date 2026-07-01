@@ -3,8 +3,8 @@
 # ============================================================================
 # Quick reference:
 #   make build-tools     Build custom pentest-tools image (Dockerfile.pentest)
-#   make up              Start the main stack (pentagi + pgvector + scraper)
-#   make down            Stop the main stack
+#   make up              Start the stack (must set DATABASE_URL in .env first)
+#   make down            Stop the stack
 #   make load-skills     Copy skill files to ~/.hermes/skills/ (for Hermes agents)
 #   make test-tools      Smoke-test tools inside the pentest-tools image
 #   make shell           Interactive bash inside pentest-tools image
@@ -18,35 +18,25 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  build-tools   Build the custom pentest-tools image (Dockerfile.pentest)"
-	@echo "  up            Start the main stack (with bundled pgvector)"
-	@echo "  up-external   Start stack with external DB (set DATABASE_URL in .env)"
-	@echo "  down          Stop the main stack"
+	@echo "  up            Start the stack (pentagi + scraper)"
+	@echo "                NOTE: set DATABASE_URL in .env — external ParadeDB required"
+	@echo "  down          Stop the stack"
 	@echo "  logs          Follow pentagi backend logs"
 	@echo "  shell         Interactive bash inside pentest-tools:latest"
 	@echo "  load-skills   Copy skill files to ~/.hermes/skills/ (for Hermes agents)"
 	@echo "  test-tools    Smoke-test tools inside pentest-tools:latest"
 	@echo "  clean         Remove built image"
 	@echo ""
-	@echo "Optional stacks:"
-	@echo "  docker compose -f docker-compose-langfuse.yml up -d"
-	@echo "  docker compose -f docker-compose-observability.yml up -d"
-	@echo "  docker compose -f docker-compose-graphiti.yml up -d"
-	@echo ""
 
 # Build the custom pentest tools image
 build-tools:
 	docker compose build pentest-tools
 
-# Start main stack (with bundled pgvector)
+# Start the stack — connect to your external ParadeDB via DATABASE_URL in .env
 up:
-	docker compose --profile internal-db up -d
-
-# Start stack with external database (set DATABASE_URL in .env)
-# No local pgvector needed — connects to your existing ParadeDB/PostgreSQL
-up-external:
 	docker compose up -d
 
-# Stop main stack
+# Stop all services
 down:
 	docker compose down
 

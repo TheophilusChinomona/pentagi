@@ -7,8 +7,6 @@ volumes:
     driver: local
   scraper-ssl:
     driver: local
-  pentagi-postgres-data:
-    driver: local
   pentest-tools-cache:
     driver: local
 
@@ -50,7 +48,6 @@ services:
       - 8443/tcp
     ports:
       - ${PENTAGI_LISTEN_IP:-127.0.0.1}:${PENTAGI_LISTEN_PORT:-8443}:8443
-    depends_on: []
     environment:
       - DEBUG=${DEBUG:-false}
       - DOCKER_GID=998
@@ -148,7 +145,10 @@ services:
       - OAUTH_GOOGLE_CLIENT_SECRET=${OAUTH_GOOGLE_CLIENT_SECRET:-}
       - OAUTH_GITHUB_CLIENT_ID=${OAUTH_GITHUB_CLIENT_ID:-}
       - OAUTH_GITHUB_CLIENT_SECRET=${OAUTH_GITHUB_CLIENT_SECRET:-}
-      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@pgvector:5432/pentagidb?sslmode=disable}
+      # Database — you MUST set DATABASE_URL in .env pointing to your external
+      # PostgreSQL / ParadeDB instance with pgvector extension enabled.
+      # Example: DATABASE_URL=postgres://user:pass@host:5432/db?sslmode=require
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required — set it in .env}
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-}
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-}
       - DATABASE_VECTOR_MAX_CONNS=${DATABASE_VECTOR_MAX_CONNS:-}
@@ -204,59 +204,6 @@ services:
       - pentagi-network
       - observability-network
       - langfuse-network
-
-  pgvector:
-    image: vxcontrol/pgvector:latest
-    restart: unless-stopped
-    container_name: pgvector
-    hostname: pgvector
-    profiles:
-      - internal-db
-    expose:
-      - 5432/tcp
-    ports:
-      - ${PGVECTOR_LISTEN_IP:-127.0.0.1}:${PGVECTOR_LISTEN_PORT:-5432}:5432
-    environment:
-      POSTGRES_USER: ${PENTAGI_POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${PENTAGI_POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${PENTAGI_POSTGRES_DB:-pentagidb}
-    logging:
-      options:
-        max-size: 50m
-        max-file: "7"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PENTAGI_POSTGRES_USER:-postgres}"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-    volumes:
-      - pentagi-postgres-data:/var/lib/postgresql/data
-    networks:
-      - pentagi-network
-
-  pgexporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
-    restart: unless-stopped
-    depends_on:
-      pgvector:
-        condition: service_healthy
-    container_name: pgexporter
-    hostname: pgexporter
-    profiles:
-      - internal-db
-    expose:
-      - 9187/tcp
-    ports:
-      - ${POSTGRES_EXPORTER_LISTEN_IP:-127.0.0.1}:${POSTGRES_EXPORTER_LISTEN_PORT:-9187}:9187
-    environment:
-      - DATA_SOURCE_NAME=postgresql://${PENTAGI_POSTGRES_USER:-postgres}:${PENTAGI_POSTGRES_PASSWORD:-postgres}@pgvector:5432/${PENTAGI_POSTGRES_DB:-pentagidb}?sslmode=disable
-    logging:
-      options:
-        max-size: 50m
-        max-file: "7"
-    networks:
-      - pentagi-network
 
   scraper:
     image: vxcontrol/scraper:latest
