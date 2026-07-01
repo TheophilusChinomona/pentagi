@@ -1,0 +1,115 @@
+# Custom LLM Provider Configuration
+# This is the default file mounted by docker-compose.yml at
+# /opt/pentagi/conf/custom.provider.yml
+#
+# Reference: examples/configs/ for more variants
+# Override with PENTAGI_LLM_SERVER_CONFIG_PATH env var
+
+simple:
+  model: "gpt-4.1-mini"
+  temperature: 0.5
+  top_p: 0.5
+  n: 1
+  max_tokens: 3000
+  price:
+    input: 0.4
+    output: 1.6
+
+simple_json:
+  model: "gpt-4.1-mini"
+  temperature: 0.5
+  top_p: 0.5
+  n: 1
+  max_tokens: 3000
+  json: true
+  price:
+    input: 0.4
+    output: 1.6
+
+primary_agent:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 1.1
+    output: 4.4
+
+assistant:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 2000
+  price:
+    input: 0.4
+    output: 1.6
+
+coder:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6
+
+pentester:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6
+
+installer:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 2000
+  price:
+    input: 0.4
+    output: 1.6
+
+adviser:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6
+
+searcher:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6
+
+memorist:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 2000
+  price:
+    input: 0.4
+    output: 1.6
+
+generator:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6
+
+reporter:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6
+
+enricher:
+  model: "gpt-4.1-mini"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.4
+    output: 1.6

@@ -1,0 +1,58 @@
+# Ollama Provider Configuration
+# This is the default file mounted by docker-compose.yml at
+# /opt/pentagi/conf/ollama.provider.yml
+#
+# Override with PENTAGI_OLLAMA_SERVER_CONFIG_PATH env var
+# See examples/configs/ollama-*.provider.yml for more variants
+
+simple:
+  model: "llama3.1:8b"
+  temperature: 1
+  top_p: 0.9
+  n: 1
+  max_tokens: 8192
+
+simple_json:
+  model: "llama3.1:8b"
+  temperature: 1
+  top_p: 0.95
+  n: 1
+  max_tokens: 8192
+  json: true
+
+primary_agent:
+  model: "qwen3:32b"
+  temperature: 1
+  top_p: 0.9
+  n: 1
+  max_tokens: 16384
+  reasoning:
+    effort: high
+
+assistant:
+  model: "llama3.1:8b"
+  temperature: 1
+  top_p: 0.9
+  n: 1
+  max_tokens: 8192
+
+coder:
+  model: "qwen3:32b"
+  temperature: 1
+  top_p: 0.9
+  n: 1
+  max_tokens: 16384
+
+pentester:
+  model: "llama3.1:8b"
+  temperature: 1
+  top_p: 0.9
+  n: 1
+  max_tokens: 8192
+
+installer:
+  model: "llama3.1:8b"
+  temperature: 1
+  top_p: 0.9
+  n: 1
+  max_tokens: 4096
