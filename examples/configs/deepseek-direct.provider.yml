@@ -1,0 +1,125 @@
+# DeepSeek Provider — PentAGI Config
+#
+# Direct DeepSeek API via api.deepseek.com
+# Requires: DEEPSEEK_API_KEY in .env
+#
+# Pricing (per 1M tokens):
+#   V4-Flash: $0.14 input, $0.0028 cache-hit input, $0.28 output
+#   V4-Pro:   $0.435 input, $0.003625 cache-hit input, $0.87 output
+
+simple:
+  model: "deepseek-v4-flash"
+  temperature: 0.5
+  top_p: 0.5
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+simple_json:
+  model: "deepseek-v4-flash"
+  temperature: 0.5
+  top_p: 0.5
+  n: 1
+  max_tokens: 4000
+  json: true
+  price:
+    input: 0.14
+    output: 0.28
+
+primary_agent:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.435
+    output: 0.87
+
+assistant:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+generator:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+refiner:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.435
+    output: 0.87
+
+coder:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.435
+    output: 0.87
+
+pentester:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.435
+    output: 0.87
+
+installer:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+adviser:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.435
+    output: 0.87
+
+searcher:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+memorist:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+enricher:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.14
+    output: 0.28
+
+reporter:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.435
+    output: 0.87
