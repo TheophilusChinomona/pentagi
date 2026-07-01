@@ -1,150 +1,125 @@
-# CLAUDE.md
+# PentAGI Fork — Pentest Toolkit
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This is a fork of [vxcontrol/pentagi](https://github.com/vxcontrol/pentagi) — a fully autonomous AI-driven penetration testing system.
 
-## Core Interaction Rules
+## What's Different from Upstream
 
-1. **Always use English** for all interactions, responses, explanations, and questions with users.
-2. **Password Complexity Requirements**: For all password-related development (registration, password reset, API token generation, etc.), the following rules must be enforced:
-   - Minimum 12 characters
-   - Must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character
-   - Common weak passwords (e.g., `password`, `123456`) are prohibited
-   - Both backend and frontend validation must be implemented; do not rely on frontend validation alone
-
-## Project Overview
-
-**PentAGI** is an automated security testing platform powered by AI agents. It runs autonomous penetration testing workflows using a multi-agent system (Researcher, Developer, Executor agents) that coordinates LLM providers, Docker-sandboxed tool execution, and a persistent vector memory store.
-
-The application is a monorepo with:
-- **`backend/`** — Go REST + GraphQL API server
-- **`frontend/`** — React + TypeScript web UI
-- **`observability/`** — Optional monitoring stack configs
-
-## Build & Development Commands
-
-### Backend (run from `backend/`)
-
-```bash
-go mod download                              # Install dependencies
-go build -trimpath -o pentagi ./cmd/pentagi  # Build main binary
-go test ./...                                # Run all tests
-go test ./pkg/foo/... -v -run TestName       # Run specific test
-golangci-lint run --timeout=5m               # Lint
-
-# Code generation (run after schema changes)
-go run github.com/99designs/gqlgen --config ./gqlgen/gqlgen.yml  # GraphQL resolvers
-swag init -g ../../pkg/server/router.go -o pkg/server/docs/ --parseDependency --parseInternal --parseDepth 2 -d cmd/pentagi  # Swagger docs
-```
-
-### Frontend (run from `frontend/`)
-
-```bash
-pnpm install              # Install dependencies
-pnpm run dev              # Dev server on http://localhost:8000
-pnpm run build            # Production build
-pnpm run lint             # ESLint check
-pnpm run lint:fix         # ESLint auto-fix
-pnpm run prettier         # Prettier check
-pnpm run prettier:fix     # Prettier auto-format
-pnpm run test             # Vitest
-pnpm run test:coverage    # Coverage report
-pnpm run graphql:generate # Regenerate GraphQL types from schema
-```
-
-### Docker (run from repo root)
-
-```bash
-docker compose up -d                                                          # Start core services
-docker compose -f docker-compose.yml -f docker-compose-observability.yml up -d  # + monitoring
-docker compose -f docker-compose.yml -f docker-compose-langfuse.yml up -d       # + LLM analytics
-docker compose -f docker-compose.yml -f docker-compose-graphiti.yml up -d       # + knowledge graph
-docker build -t local/pentagi:latest .                                        # Build image
-```
-
-The full stack runs at `https://localhost:8443` when using Docker Compose. Copy `.env.example` to `.env` and fill in at minimum the database and at least one LLM provider key.
+- **Custom pentest tools image** built from `Dockerfile.pentest` (Ubuntu 24.04 + 40+ tools including ProjectDiscovery suite, Metasploit, wordlists, SAST/SCA scanners)
+- Standalone, agent-agnostic — works with PentAGI UI/API, Hermes, Claude Code, Codex, or any AI agent with Docker access
+- No Hermes-specific or Athena-specific deployment scripts
 
 ## Architecture
 
-### Backend Package Structure
+The stack runs as a group of Docker Compose services:
 
-| Package | Role |
-|---|---|
-| `cmd/pentagi/` | Main entry point; initializes config, DB, server |
-| `pkg/config/` | Environment-based config parsing |
-| `pkg/server/` | Gin router, middleware, auth (JWT/OAuth2/API tokens), Swagger |
-| `pkg/controller/` | Business logic for REST endpoints |
-| `pkg/graph/` | gqlgen GraphQL schema (`schema.graphqls`) and resolvers |
-| `pkg/database/` | GORM models, SQLC queries, goose migrations |
-| `pkg/providers/` | LLM provider adapters (OpenAI, Anthropic, Gemini, Bedrock, Ollama, etc.) |
-| `pkg/tools/` | Penetration testing tool integrations |
-| `pkg/docker/` | Docker SDK wrapper for sandboxed container execution |
-| `pkg/terminal/` | Terminal session and command execution management |
-| `pkg/queue/` | Async task queue |
-| `pkg/csum/` | Chain summarization for LLM context management |
-| `pkg/graphiti/` | Knowledge graph (Neo4j via Graphiti) integration |
-| `pkg/observability/` | OpenTelemetry tracing, metrics, structured logging |
+| Service | Purpose |
+|---------|---------|
+| `pentagi` | Go backend + AI agents + REST/GraphQL API |
+| `pgvector` | PostgreSQL + pgvector for memory/semantic search |
+| `pgexporter` | Prometheus metrics for PostgreSQL |
+| `scraper` | Headless browser for web intelligence |
+| `pentest-tools` | **Custom** tool image (build target, built on demand) |
 
-Database migrations live in `backend/migrations/sql/` and run automatically via goose at startup.
+Optional stacks (separate compose files):
+- `docker-compose-langfuse.yml` — LLM analytics
+- `docker-compose-observability.yml` — Grafana/Prometheus/Jaeger/Loki monitoring
+- `docker-compose-graphiti.yml` — Neo4j knowledge graph
 
-### Frontend Structure
+The `pentagi` service uses `DOCKER_DEFAULT_IMAGE_FOR_PENTEST=pentest-tools:latest` (set in `.env.example`) to spawn isolated tool containers for pentest operations.
 
+## Quick Start
+
+```bash
+# 1. Build the custom pentest tools image
+docker compose build pentest-tools
+
+# 2. Copy .env and configure (at minimum an LLM API key)
+cp .env.example .env
+# Edit .env — set OPEN_AI_KEY or ANTHROPIC_API_KEY or GEMINI_API_KEY, etc.
+
+# 3. Start the full stack
+docker compose up -d
+
+# 4. Open the UI
+open https://localhost:8443
+# Default login: admin@pentagi.com / admin
+
+# 5. (Optional) Start optional stacks
+docker compose -f docker-compose-langfuse.yml up -d
+docker compose -f docker-compose-observability.yml up -d
 ```
-frontend/src/
-├── app.tsx / main.tsx     # Entry points and router setup
-├── pages/                 # Route-level page components
-│   ├── flows/             # Flow management UI
-│   └── settings/          # Provider, prompt, token settings
-├── components/
-│   ├── layouts/           # App shell layouts
-│   └── ui/                # Base Radix UI components
-├── graphql/               # Auto-generated Apollo types (do not edit)
-├── hooks/                 # Custom React hooks
-├── lib/                   # Apollo client, HTTP utilities
-└── schemas/               # Zod validation schemas
+
+## Common Commands
+
+```bash
+docker compose build pentest-tools  # Build custom tool image
+docker compose up -d                 # Start main stack
+docker compose down                  # Stop everything
+docker compose logs -f pentagi       # Watch agent logs
+
+# Optional stacks
+docker compose -f docker-compose-langfuse.yml up -d
+docker compose -f docker-compose-observability.yml up -d
 ```
 
-State is managed primarily through Apollo Client (GraphQL) with real-time updates via GraphQL subscriptions over WebSocket.
+## Building the Custom Tool Image
 
-### Data Flow
+`Dockerfile.pentest` extends Ubuntu 24.04 with:
 
-1. User creates a "flow" (penetration test) via the UI or REST API.
-2. The backend queues the flow and spawns agent goroutines.
-3. The Researcher agent gathers information; the Developer plans attack strategies; the Executor runs tools in isolated Docker containers.
-4. Results, tool outputs, and LLM reasoning are stored in PostgreSQL (with pgvector for semantic search/memory).
-5. Real-time progress is pushed to the frontend via GraphQL subscriptions.
+- **Go tools**: nuclei, subfinder, httpx, dnsx, naabu, katana, ffuf, gobuster, amass, waybackurls, trufflehog, gitleaks, osv-scanner
+- **Python tools**: semgrep, bandit, checkov, pip-audit, impacket, bloodhound, commix, jwt_tool, NetExec, Responder, enum4linux-ng
+- **APT packages**: nmap, sqlmap, nikto, hydra, masscan, john, hashcat
+- **Other**: Metasploit, searchsploit, trivy, grype, kubescape, kube-bench
+- **Wordlists**: SecLists, XSS payloads, API endpoints, common passwords
 
-### Authentication
+To test the tools are available:
+```bash
+docker compose --profile build run pentest-tools bash
+# Then inside: nmap --version, nuclei -version, etc.
+```
 
-- **Session cookies** for browser login (secure, httpOnly)
-- **OAuth2** via Google and GitHub
-- **Bearer tokens** (API tokens table) for programmatic API access
+## Using Without the Full Stack (Agent-Only)
 
-### Key Integrations
+Any AI agent can use the pentest-tools image directly without the PentAGI backend:
 
-- **LLM Providers**: OpenAI, Anthropic, Gemini, AWS Bedrock, Ollama, DeepSeek, GLM, Kimi, Qwen, and custom HTTP endpoints — configured via environment variables or the Settings UI
-- **Search**: DuckDuckGo, Google, Tavily, Traversaal, Perplexity, Searxng
-- **Databases**: PostgreSQL + pgvector (required), Neo4j (optional, for knowledge graph)
-- **Observability**: OpenTelemetry → VictoriaMetrics + Loki + Jaeger → Grafana; Langfuse for LLM analytics
+```bash
+# Hermes
+hermes config set terminal.backend docker
+hermes config set terminal.docker_image pentest-tools:latest
 
-### Adding a New LLM Provider
+# Docker exec directly
+docker run --rm pentest-tools:latest nmap -sV scanme.nmap.org
 
-1. Create `backend/pkg/providers/<name>/<name>.go` implementing the `provider.Provider` interface.
-2. Add a new `Provider<Name> ProviderType` constant and `DefaultProviderName<Name>` in `pkg/providers/provider/provider.go`.
-3. Register the provider in `pkg/providers/providers.go` (`DefaultProviderConfig`, `NewProvider`, `buildProviderFromConfig`, `GetProvider`).
-4. Add the new type to the `Valid()` whitelist in `pkg/server/models/providers.go` — **without this step, the REST API returns 422 Unprocessable Entity**.
-5. Add the env var key to `pkg/config/config.go` (e.g., `<NAME>_API_KEY`, `<NAME>_SERVER_URL`).
-6. Add the new `PROVIDER_TYPE` enum value via a goose migration in `backend/migrations/sql/`.
-7. Add the provider icon in `frontend/src/components/icons/<name>.tsx` and register it in `frontend/src/components/icons/provider-icon.tsx`.
-8. Update the GraphQL schema/types and frontend settings page if needed.
+# Claude Code / Codex
+# Configure your tool to use pentest-tools:latest as the terminal image
+```
 
-### Code Generation
+## Key Files
 
-When modifying `backend/pkg/graph/schema.graphqls`, re-run the gqlgen command to regenerate resolver stubs. When modifying REST handler annotations, re-run swag to update Swagger docs. When modifying `frontend/src/graphql/*.graphql` query files, re-run `pnpm run graphql:generate` to update TypeScript types.
+| File | Purpose |
+|------|---------|
+| `Dockerfile.pentest` | Custom pentest tools image |
+| `Dockerfile` | PentAGI main app build (multi-stage: Go backend + React frontend) |
+| `docker-compose.yml` | Main stack with custom tool image wired in |
+| `.env.example` | All configuration variables with our custom defaults |
+| `backend/` | Go backend source (REST + GraphQL APIs, agent system) |
+| `frontend/` | React/TypeScript UI source |
+| `scripts/aggregate-results.sh` | Utility to parse tool outputs into findings JSON |
 
-### Utility Binaries
+## Upstream Sync
 
-The backend contains helper binaries for development/testing:
-- `cmd/ctester/` — tests container execution
-- `cmd/ftester/` — tests LLM function/tool calling
-- `cmd/etester/` — tests embedding providers
-- `cmd/installer/` — interactive TUI wizard for guided deployment setup (configures `.env`, Docker Compose, DB, search engines, etc.)
+This repo tracks `vxcontrol/pentagi`. To sync upstream changes:
+
+```bash
+git remote add upstream https://github.com/vxcontrol/pentagi.git
+git fetch upstream
+git checkout pentagi-fork
+git merge upstream/main
+# Resolve conflicts on Dockerfile.pentest, .env.example, docker-compose.yml, .gitignore
+```
+
+## What Not to Do
+
+- Don't commit `.env` — secrets live in environment variables or Docker secrets
+- Don't mix old Hermes/Athena deployment scripts with the PentAGI stack
+- Don't edit the Go backend or React frontend without understanding the full PentAGI architecture

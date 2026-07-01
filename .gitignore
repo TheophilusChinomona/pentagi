@@ -28,6 +28,7 @@ data/*
 
 # IDE
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
@@ -35,3 +36,8 @@ data/*
 # OS
 Thumbs.db
 
+# Local tool state
+/.brv/
+/.crew/
+/.firecrawl/
+/research/

@@ -9,6 +9,8 @@ volumes:
     driver: local
   pentagi-postgres-data:
     driver: local
+  pentest-tools-cache:
+    driver: local
 
 networks:
   pentagi-network:
@@ -22,6 +24,23 @@ networks:
     name: langfuse-network
 
 services:
+  # ============================================================================
+  # Pentest Tools — Custom image with 40+ security tools
+  # Build once: docker compose build pentest-tools
+  # Used by PentAGI backend as DOCKER_DEFAULT_IMAGE_FOR_PENTEST
+  # ============================================================================
+  pentest-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile.pentest
+    image: pentest-tools:latest
+    container_name: pentest-tools-builder
+    profiles:
+      - build
+    volumes:
+      - pentest-tools-cache:/root/.cache
+    command: echo "pentest-tools:latest built successfully"
+    tty: true
   pentagi:
     image: ${PENTAGI_IMAGE:-vxcontrol/pentagi:latest}
     restart: unless-stopped
@@ -168,8 +187,8 @@ services:
       - DOCKER_NETWORK=${DOCKER_NETWORK:-}
       - DOCKER_PUBLIC_IP=${DOCKER_PUBLIC_IP:-}
       - DOCKER_WORK_DIR=${DOCKER_WORK_DIR:-}
-      - DOCKER_DEFAULT_IMAGE=${DOCKER_DEFAULT_IMAGE:-}
-      - DOCKER_DEFAULT_IMAGE_FOR_PENTEST=${DOCKER_DEFAULT_IMAGE_FOR_PENTEST:-}
+      - DOCKER_DEFAULT_IMAGE=${DOCKER_DEFAULT_IMAGE:-debian:latest}
+      - DOCKER_DEFAULT_IMAGE_FOR_PENTEST=${DOCKER_DEFAULT_IMAGE_FOR_PENTEST:-pentest-tools:latest}
     logging:
       options:
         max-size: 50m
