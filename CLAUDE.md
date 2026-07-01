@@ -35,10 +35,14 @@ docker compose build pentest-tools
 
 # 2. Copy .env and configure (at minimum an LLM API key)
 cp .env.example .env
-# Edit .env — set OPEN_AI_KEY or ANTHROPIC_API_KEY or GEMINI_API_KEY, etc.
+# Edit .env — set LLM_SERVER_URL, LLM_SERVER_KEY, LLM_SERVER_PROVIDER
 
-# 3. Start the full stack
-docker compose up -d
+# 3a. Start with bundled pgvector (default)
+make up
+
+# 3b. OR start with external ParadeDB/PostgreSQL
+# Set DATABASE_URL in .env first
+make up-external
 
 # 4. Open the UI
 open https://localhost:8443

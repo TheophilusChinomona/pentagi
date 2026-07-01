@@ -18,7 +18,8 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  build-tools   Build the custom pentest-tools image (Dockerfile.pentest)"
-	@echo "  up            Start the main stack (pentagi + pgvector + scraper)"
+	@echo "  up            Start the main stack (with bundled pgvector)"
+	@echo "  up-external   Start stack with external DB (set DATABASE_URL in .env)"
 	@echo "  down          Stop the main stack"
 	@echo "  logs          Follow pentagi backend logs"
 	@echo "  shell         Interactive bash inside pentest-tools:latest"
@@ -36,8 +37,13 @@ help:
 build-tools:
 	docker compose build pentest-tools
 
-# Start main stack
+# Start main stack (with bundled pgvector)
 up:
+	docker compose --profile internal-db up -d
+
+# Start stack with external database (set DATABASE_URL in .env)
+# No local pgvector needed — connects to your existing ParadeDB/PostgreSQL
+up-external:
 	docker compose up -d
 
 # Stop main stack
