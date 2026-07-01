@@ -1,0 +1,129 @@
+# OpenCode Go Provider — PentAGI Config
+#
+# Uses your OpenCode Go subscription to access multiple models through
+# a single OpenAI-compatible endpoint.
+#
+# Endpoint:    https://opencode.ai/zen/go/v1
+# Auth:        Bearer token (your OpenCode Go API key)
+# Models:      deepseek-v4-flash, deepseek-v4-pro, kimi-k2.6, kimi-k2.7-code,
+#              glm-5.2, mimo-v2.5, mimo-v2.5-pro, etc.
+#
+# To use: set OPENCODE_GO_KEY in .env and reference this config via
+# LLM_SERVER_CONFIG_PATH in docker-compose.yml
+
+simple:
+  model: "deepseek-v4-flash"
+  temperature: 0.5
+  top_p: 0.5
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+simple_json:
+  model: "deepseek-v4-flash"
+  temperature: 0.5
+  top_p: 0.5
+  n: 1
+  max_tokens: 4000
+  json: true
+  price:
+    input: 0.0
+    output: 0.0
+
+primary_agent:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+assistant:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+generator:
+  model: "kimi-k2.6"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+refiner:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+coder:
+  model: "kimi-k2.7-code"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+pentester:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+installer:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+adviser:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+searcher:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+memorist:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+enricher:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+reporter:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
