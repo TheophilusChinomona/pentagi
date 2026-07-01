@@ -1,78 +1,125 @@
-# CLAUDE.md
+# PentAGI Fork — Pentest Toolkit
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This is a fork of [vxcontrol/pentagi](https://github.com/vxcontrol/pentagi) — a fully autonomous AI-driven penetration testing system.
 
-## Repo purpose
+## What's Different from Upstream
 
-Docker-based penetration-testing toolkit + skill library for an LLM agent (Hermes/Athena). This repo contains **no application source** — only Dockerfiles, shell wrappers, and `SKILL.md` methodology documents that the agent reads at runtime.
+- **Custom pentest tools image** built from `Dockerfile.pentest` (Ubuntu 24.04 + 40+ tools including ProjectDiscovery suite, Metasploit, wordlists, SAST/SCA scanners)
+- Standalone, agent-agnostic — works with PentAGI UI/API, Hermes, Claude Code, Codex, or any AI agent with Docker access
+- No Hermes-specific or Athena-specific deployment scripts
 
-## Two parallel deployment tracks
+## Architecture
 
-This is the most important thing to understand before editing. The repo currently supports two mutually exclusive setups; do not mix them.
+The stack runs as a group of Docker Compose services:
 
-### Track A — Athena gateway (legacy, registry-pulled)
-- Entrypoint: `setup.sh` → `docker-compose.yml` (the *committed but locally modified* version, see `git diff`).
-- Pulls `registry.gitlab.com/chinomonatinotenda19/athena*` images and reads secrets from Infisical at runtime (`.env.example` documents the secrets, no `.env` on disk).
-- Builds `docker/gateway.Dockerfile` — extends the upstream Athena image with `docker-ce-cli`, bundles `scripts/` and `skills/`, and exposes `athena-engage` / `athena-teardown` / `athena-code-audit` CLI wrappers (symlinks created in the Dockerfile).
-- The gateway spawns **per-engagement tool containers** via `scripts/run-engagement.sh` — each gets its own isolated Docker network (`pentest-<engagement-id>`), `/pentest/results/<engagement-id>` volume, audit log, and `engagement-state.json`. `scripts/teardown-engagement.sh` archives evidence to a tarball before removing the container/network.
-- README.md describes this track.
+| Service | Purpose |
+|---------|---------|
+| `pentagi` | Go backend + AI agents + REST/GraphQL API |
+| `pgvector` | PostgreSQL + pgvector for memory/semantic search |
+| `pgexporter` | Prometheus metrics for PostgreSQL |
+| `scraper` | Headless browser for web intelligence |
+| `pentest-tools` | **Custom** tool image (build target, built on demand) |
 
-### Track B — Hermes-native (`Dockerfile.pentest` + `Makefile`, current direction)
-- Entrypoint: `make build` → builds `pentest-tools:latest` from `Dockerfile.pentest` (Ubuntu 24.04 + ProjectDiscovery suite + msf + seclists). The user configures stock Hermes to `terminal.backend=docker, terminal.docker_image=pentest-tools:latest`; Hermes itself manages container lifecycle via its Docker backend, so the `scripts/run-engagement.sh` wrappers are not used here.
-- Skills are loaded into the *host's* `~/.hermes/skills/` via `make load-skills` (NOT `load-skills.sh`, which targets the Athena layout `~/.hermes/skills/software-development/`).
-- README-HERMES.md and QUICKSTART-HERMES.md describe this track. They explicitly say `docker/gateway.Dockerfile`, the engagement scripts, `setup.sh`, and `load-skills.sh` are unused in this mode.
+Optional stacks (separate compose files):
+- `docker-compose-langfuse.yml` — LLM analytics
+- `docker-compose-observability.yml` — Grafana/Prometheus/Jaeger/Loki monitoring
+- `docker-compose-graphiti.yml` — Neo4j knowledge graph
 
-The committed `docker-compose.yml` (HEAD) is Track A's full stack. The working tree has it reduced to a single `pentest-tools` build service for Track B — meaning `git diff docker-compose.yml` is large and intentional. Before editing compose, confirm which track the user is on.
+The `pentagi` service uses `DOCKER_DEFAULT_IMAGE_FOR_PENTEST=pentest-tools:latest` (set in `.env.example`) to spawn isolated tool containers for pentest operations.
 
-## Common commands
+## Quick Start
 
-Track B (most likely, given current working-tree state):
 ```bash
-make build              # build pentest-tools:latest
-make build-no-cache     # rebuild from scratch
-make test-tools         # smoke-test that nmap/nuclei/subfinder/etc. exist in image
-make shell              # interactive bash inside the tools container
-make load-skills        # cp -r skills/pentest-* ~/.hermes/skills/
-make clean              # docker compose down + rmi pentest-tools:latest
+# 1. Build the custom pentest tools image
+docker compose build pentest-tools
+
+# 2. Copy .env and configure (at minimum an LLM API key)
+cp .env.example .env
+# Edit .env — set OPEN_AI_KEY or ANTHROPIC_API_KEY or GEMINI_API_KEY, etc.
+
+# 3. Start the full stack
+docker compose up -d
+
+# 4. Open the UI
+open https://localhost:8443
+# Default login: admin@pentagi.com / admin
+
+# 5. (Optional) Start optional stacks
+docker compose -f docker-compose-langfuse.yml up -d
+docker compose -f docker-compose-observability.yml up -d
 ```
 
-Track A:
+## Common Commands
+
 ```bash
-infisical login
-infisical init                                       # writes .infisical.json
-./setup.sh --env <dev|staging|prod>                  # full deploy
-./load-skills.sh                                     # load skills into ~/.hermes/skills/software-development/
-infisical run --env=<env> -- docker compose <cmd>    # every compose call needs this wrapper
-./scripts/run-engagement.sh <target> <engagement-id>
-./scripts/teardown-engagement.sh <engagement-id>
+docker compose build pentest-tools  # Build custom tool image
+docker compose up -d                 # Start main stack
+docker compose down                  # Stop everything
+docker compose logs -f pentagi       # Watch agent logs
+
+# Optional stacks
+docker compose -f docker-compose-langfuse.yml up -d
+docker compose -f docker-compose-observability.yml up -d
 ```
 
-There is no test suite, linter, or build system beyond Docker. `make test-tools` is the closest thing to a CI check.
+## Building the Custom Tool Image
 
-## Skill files — gotchas
+`Dockerfile.pentest` extends Ubuntu 24.04 with:
 
-Skills are markdown files with YAML frontmatter (`name`, `description`, optional `triggers`) under `skills/pentest-*/SKILL.md`. They contain the methodology the agent follows, not executable code.
+- **Go tools**: nuclei, subfinder, httpx, dnsx, naabu, katana, ffuf, gobuster, amass, waybackurls, trufflehog, gitleaks, osv-scanner
+- **Python tools**: semgrep, bandit, checkov, pip-audit, impacket, bloodhound, commix, jwt_tool, NetExec, Responder, enum4linux-ng
+- **APT packages**: nmap, sqlmap, nikto, hydra, masscan, john, hashcat
+- **Other**: Metasploit, searchsploit, trivy, grype, kubescape, kube-bench
+- **Wordlists**: SecLists, XSS payloads, API endpoints, common passwords
 
-- **Naming is inconsistent across skills**: `pentest-orchestrator` and `pentest-code` use hyphens in the `name:` field; `pentest_api`, `pentest_recon`, `pentest_web`, `pentest_network`, `pentest_report` use underscores. If you add or rename a skill, match the surrounding file's convention rather than assuming one is canonical.
-- The directory name (always hyphenated, e.g. `pentest-api/`) is what `make load-skills` and `load-skills.sh` copy. Hermes/Athena resolves skills by frontmatter `name`, not directory.
-- Track A's `load-skills.sh` installs into `~/.hermes/skills/software-development/<skill>` (a sub-namespace); Track B's `make load-skills` installs flat into `~/.hermes/skills/<skill>`. They are not interchangeable.
-
-## Engagement data layout (Track A)
-
-When `run-engagement.sh` creates an engagement, the results directory is the source of truth:
+To test the tools are available:
+```bash
+docker compose --profile build run pentest-tools bash
+# Then inside: nmap --version, nuclei -version, etc.
 ```
-${PENTEST_RESULTS_ROOT:-/pentest/results}/<engagement-id>/
-├── audit.log               append-only timestamped events
-├── engagement-state.json   phase tracking, findings counts, container/network IDs
-├── recon/ web/ network/ api/ evidence/ reports/
-└── <engagement-id>-evidence-<date>.tar.gz   created on teardown
+
+## Using Without the Full Stack (Agent-Only)
+
+Any AI agent can use the pentest-tools image directly without the PentAGI backend:
+
+```bash
+# Hermes
+hermes config set terminal.backend docker
+hermes config set terminal.docker_image pentest-tools:latest
+
+# Docker exec directly
+docker run --rm pentest-tools:latest nmap -sV scanme.nmap.org
+
+# Claude Code / Codex
+# Configure your tool to use pentest-tools:latest as the terminal image
 ```
-`scripts/aggregate-results.sh` parses raw tool output (nmap, nuclei, etc.) into `findings.json`. Skills reference these paths; if you change the layout, update the orchestrator skill and both engagement scripts together.
 
-## Image registry / IMAGE_TAG (Track A)
+## Key Files
 
-Compose references `${IMAGE_TAG:-stable}` against three GitLab registry images (`athena`, `athena-pentest/pentest-tools`, `athena-pentest/code-tools`). Each is built by a separate repo's CI; if the tag isn't published there, `docker compose pull` 404s. Override per-env in Infisical.
+| File | Purpose |
+|------|---------|
+| `Dockerfile.pentest` | Custom pentest tools image |
+| `Dockerfile` | PentAGI main app build (multi-stage: Go backend + React frontend) |
+| `docker-compose.yml` | Main stack with custom tool image wired in |
+| `.env.example` | All configuration variables with our custom defaults |
+| `backend/` | Go backend source (REST + GraphQL APIs, agent system) |
+| `frontend/` | React/TypeScript UI source |
+| `scripts/aggregate-results.sh` | Utility to parse tool outputs into findings JSON |
 
-## What not to commit
+## Upstream Sync
 
-`.gitignore` already blocks `.env`, `.credentials.json`, `.setup-complete`, and `results/`. The repo intentionally has no `.env` — secrets live in Infisical. Don't introduce a `.env` file to "make local dev easier."
+This repo tracks `vxcontrol/pentagi`. To sync upstream changes:
+
+```bash
+git remote add upstream https://github.com/vxcontrol/pentagi.git
+git fetch upstream
+git checkout pentagi-fork
+git merge upstream/main
+# Resolve conflicts on Dockerfile.pentest, .env.example, docker-compose.yml, .gitignore
+```
+
+## What Not to Do
+
+- Don't commit `.env` — secrets live in environment variables or Docker secrets
+- Don't mix old Hermes/Athena deployment scripts with the PentAGI stack
+- Don't edit the Go backend or React frontend without understanding the full PentAGI architecture
