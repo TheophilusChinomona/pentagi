@@ -1,115 +1,128 @@
 # Custom LLM Provider Configuration
-# This is the default file mounted by docker-compose.yml at
-# /opt/pentagi/conf/custom.provider.yml
+# Default: OpenCode Go (your subscription — no per-token cost)
 #
-# Reference: examples/configs/ for more variants
+# Mounted by docker-compose.yml at /opt/pentagi/conf/custom.provider.yml
 # Override with PENTAGI_LLM_SERVER_CONFIG_PATH env var
+#
+# To switch providers:
+#   PENTAGI_LLM_SERVER_CONFIG_PATH=./examples/configs/deepseek-direct.provider.yml
+#   PENTAGI_LLM_SERVER_CONFIG_PATH=./examples/configs/openrouter.provider.yml
+#
+# Set LLM_SERVER_URL and LLM_SERVER_KEY in .env to match the provider.
 
 simple:
-  model: "gpt-4.1-mini"
+  model: "deepseek-v4-flash"
   temperature: 0.5
   top_p: 0.5
   n: 1
-  max_tokens: 3000
+  max_tokens: 4000
   price:
-    input: 0.4
-    output: 1.6
+    input: 0.0
+    output: 0.0
 
 simple_json:
-  model: "gpt-4.1-mini"
+  model: "deepseek-v4-flash"
   temperature: 0.5
   top_p: 0.5
   n: 1
-  max_tokens: 3000
+  max_tokens: 4000
   json: true
   price:
-    input: 0.4
-    output: 1.6
+    input: 0.0
+    output: 0.0
 
 primary_agent:
-  model: "gpt-4.1-mini"
+  model: "deepseek-v4-pro"
   n: 1
-  max_tokens: 4000
+  max_tokens: 8000
   price:
-    input: 1.1
-    output: 4.4
+    input: 0.0
+    output: 0.0
 
 assistant:
-  model: "gpt-4.1-mini"
-  n: 1
-  max_tokens: 2000
-  price:
-    input: 0.4
-    output: 1.6
-
-coder:
-  model: "gpt-4.1-mini"
+  model: "deepseek-v4-flash"
   n: 1
   max_tokens: 4000
   price:
-    input: 0.4
-    output: 1.6
-
-pentester:
-  model: "gpt-4.1-mini"
-  n: 1
-  max_tokens: 4000
-  price:
-    input: 0.4
-    output: 1.6
-
-installer:
-  model: "gpt-4.1-mini"
-  n: 1
-  max_tokens: 2000
-  price:
-    input: 0.4
-    output: 1.6
-
-adviser:
-  model: "gpt-4.1-mini"
-  n: 1
-  max_tokens: 4000
-  price:
-    input: 0.4
-    output: 1.6
-
-searcher:
-  model: "gpt-4.1-mini"
-  n: 1
-  max_tokens: 4000
-  price:
-    input: 0.4
-    output: 1.6
-
-memorist:
-  model: "gpt-4.1-mini"
-  n: 1
-  max_tokens: 2000
-  price:
-    input: 0.4
-    output: 1.6
+    input: 0.0
+    output: 0.0
 
 generator:
-  model: "gpt-4.1-mini"
+  model: "kimi-k2.6"
   n: 1
-  max_tokens: 4000
+  max_tokens: 8000
   price:
-    input: 0.4
-    output: 1.6
+    input: 0.0
+    output: 0.0
 
-reporter:
-  model: "gpt-4.1-mini"
+refiner:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+coder:
+  model: "kimi-k2.7-code"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+pentester:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+installer:
+  model: "deepseek-v4-flash"
   n: 1
   max_tokens: 4000
   price:
-    input: 0.4
-    output: 1.6
+    input: 0.0
+    output: 0.0
+
+adviser:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
+
+searcher:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
+
+memorist:
+  model: "deepseek-v4-flash"
+  n: 1
+  max_tokens: 4000
+  price:
+    input: 0.0
+    output: 0.0
 
 enricher:
-  model: "gpt-4.1-mini"
+  model: "deepseek-v4-flash"
   n: 1
   max_tokens: 4000
   price:
-    input: 0.4
-    output: 1.6
+    input: 0.0
+    output: 0.0
+
+reporter:
+  model: "deepseek-v4-pro"
+  n: 1
+  max_tokens: 8000
+  price:
+    input: 0.0
+    output: 0.0
