@@ -205,14 +205,15 @@ jobs:
     if: github.ref == 'refs/heads/main' && success()
     runs-on: self-hosted
     steps:
-      - name: Pull latest image
+      - name: Stash local changes and pull latest
         run: |
           cd /home/openclaw/pentagi
+          git stash --include-untracked || true
           git pull origin main
 
-      - name: Update image tag
+      - name: Update image tag to GHCR
         run: |
-          sed -i 's|^PENTAGI_IMAGE=.*|PENTAGI_IMAGE=${{ env.IMAGE_NAME }}:latest|' \
+          sed -i 's|^PENTAGI_IMAGE=.*|PENTAGI_IMAGE=ghcr.io/theophiluschinomona/pentagi:latest|' \
             /home/openclaw/pentagi/.env
 
       - name: Pull image and restart
@@ -221,7 +222,14 @@ jobs:
           docker compose pull pentagi
           docker compose up -d pentagi --force-recreate
 
+      - name: Pop stashed changes
+        if: always()
+        run: |
+          cd /home/openclaw/pentagi
+          git stash pop || true
+
       - name: Health check
         run: |
           sleep 10
           curl -sf http://localhost:8443/api/v1/info | head -3 && echo "✓ Deploy OK"
+
