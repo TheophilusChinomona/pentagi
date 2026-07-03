@@ -525,7 +525,7 @@ func (fp *flowProvider) callWithRetries(
 			logger.WithFields(logrus.Fields{
 				"retry_iteration": idx,
 				"error":           err.Error()[:min(200, len(err.Error()))],
-			}).Warn("agent chain call failed, will retry")
+			}).Debug("agent chain call failed, will retry")
 		}
 
 		ticker.Reset(delayBetweenRetries)

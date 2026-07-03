@@ -719,8 +719,8 @@ type ProvidersReadinessStatus {
 
 # Default provider configurations
 type DefaultProvidersConfig {
-  openai: ProviderConfig!
-  anthropic: ProviderConfig!
+  openai: ProviderConfig
+  anthropic: ProviderConfig
   gemini: ProviderConfig
   bedrock: ProviderConfig
   ollama: ProviderConfig
