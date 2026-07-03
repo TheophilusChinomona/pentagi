@@ -705,8 +705,8 @@ export type SettingsProvidersQuery = {
             qwen: boolean;
         };
         default: {
-            openai: ProviderConfigFragmentFragment;
-            anthropic: ProviderConfigFragmentFragment;
+            openai: ProviderConfigFragmentFragment | null;
+            anthropic: ProviderConfigFragmentFragment | null;
             gemini: ProviderConfigFragmentFragment | null;
             bedrock: ProviderConfigFragmentFragment | null;
             ollama: ProviderConfigFragmentFragment | null;
