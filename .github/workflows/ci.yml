@@ -180,10 +180,9 @@ jobs:
           build-args: |
             PACKAGE_VER=${{ steps.version.outputs.version }}
             PACKAGE_REV=${{ steps.version.outputs.revision }}
-
       # ── Vulnerability scan ──
       - name: Trivy scan (critical/high only)
-        uses: aquasecurity/trivy-action@v0.29
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:latest
           format: table
