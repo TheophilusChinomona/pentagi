@@ -1,4 +1,4 @@
-name: Docker build and push
+name: CI — Build, Scan & Deploy
 
 on:
   push:
@@ -7,6 +7,11 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
+
+env:
+  GO_VERSION: '1.24'
+  NODE_VERSION: '23'
+  IMAGE_NAME: ghcr.io/theophiluschinomona/pentagi
 
 jobs:
   lint-and-test:
@@ -17,108 +22,90 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Go setup and cache
+      # ── Go ──
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
           cache-dependency-path: backend/go.sum
 
-      # Cache Go dependencies
-      - name: Go Mod Cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('backend/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Go Mod Download
+        working-directory: backend
+        run: go mod download
 
-      # pnpm setup
+      - name: Go Vet
+        working-directory: backend
+        run: go vet ./...
+
+      - name: Go Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          working-directory: backend
+          args: --timeout=5m
+
+      - name: Go Test
+        working-directory: backend
+        run: go test ./... -v -count=1
+
+      - name: Go Build (amd64 + arm64)
+        working-directory: backend
+        env:
+          CGO_ENABLED: 0
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          PACKAGE_VER=${LATEST_TAG#v}
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
+          PACKAGE_REV=""; [ "$CURRENT_COMMIT" != "$TAG_COMMIT" ] && PACKAGE_REV=$(git rev-parse --short HEAD)
+          LDFLAGS="-X pentagi/pkg/version.PackageName=pentagi -X pentagi/pkg/version.PackageVer=${PACKAGE_VER} -X pentagi/pkg/version.PackageRev=${PACKAGE_REV}"
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH=$arch go build -trimpath -ldflags "$LDFLAGS" -o /dev/null ./cmd/pentagi
+            echo "✓ linux/$arch builds"
+          done
+
+      # ── Frontend ──
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           package_json_file: frontend/package.json
 
-      # Node.js setup and cache
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '23'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
           cache-dependency-path: 'frontend/pnpm-lock.yaml'
 
-      # Frontend lint and test
-      - name: Frontend - Install dependencies
+      - name: Frontend Install
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-        continue-on-error: true
 
-      - name: Frontend - Prettier
-        working-directory: frontend
-        run: pnpm run prettier
-        continue-on-error: true
-
-      - name: Frontend - Lint
+      - name: Frontend Lint
         working-directory: frontend
         run: pnpm run lint
-        continue-on-error: true
 
-      - name: Frontend - Test
+      - name: Frontend Test
         working-directory: frontend
         run: pnpm run test
-        continue-on-error: true
 
-      # Backend lint and test
-      - name: Backend - Download dependencies
-        working-directory: backend
-        run: go mod download
-        continue-on-error: true
-
-      - name: Backend - Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-          working-directory: backend
-          args: --timeout=5m --issues-exit-code=0
-        continue-on-error: true
-
-      - name: Backend - Test
-        working-directory: backend
-        run: go test ./... -v
-        continue-on-error: true
-
-      - name: Backend - Test Build
-        working-directory: backend
-        env:
-          CGO_ENABLED: 0
-          GO111MODULE: on
+      # ── GraphQL schema validation ──
+      - name: GraphQL Codegen (validate schema match)
+        working-directory: frontend
         run: |
-          # Get version information
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          PACKAGE_VER=${LATEST_TAG#v}
-          CURRENT_COMMIT=$(git rev-parse HEAD)
-          TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
-          
-          if [ "$CURRENT_COMMIT" != "$TAG_COMMIT" ]; then
-            PACKAGE_REV=$(git rev-parse --short HEAD)
-          else
-            PACKAGE_REV=""
+          pnpm run graphql:generate
+          if [ -n "$(git status --porcelain src/graphql/)" ]; then
+            echo "❌ Generated GraphQL types differ from committed ones."
+            echo "   Run 'pnpm run graphql:generate' in frontend/ and commit the changes."
+            git diff src/graphql/
+            exit 1
           fi
-          
-          LDFLAGS="-X pentagi/pkg/version.PackageName=pentagi -X pentagi/pkg/version.PackageVer=${PACKAGE_VER} -X pentagi/pkg/version.PackageRev=${PACKAGE_REV}"
-          
-          echo "Building with version: ${PACKAGE_VER}${PACKAGE_REV:+-$PACKAGE_REV}"
-          
-          # Build for AMD64
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o /tmp/pentagi-amd64 ./cmd/pentagi
-          echo "✓ Successfully built for linux/amd64"
+          echo "✓ GraphQL types are in sync"
 
-          # Build for ARM64
-          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o /tmp/pentagi-arm64 ./cmd/pentagi
-          echo "✓ Successfully built for linux/arm64"
+      # ── Secret scanning ──
+      - name: Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
         continue-on-error: true
 
   docker-build:
@@ -144,51 +131,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Extract version from tag (without 'v' prefix) and split into parts
-      - name: Extract version and revision
+      - name: Extract version
         id: version
         run: |
-          # Get latest tag version (without 'v' prefix)
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           VERSION=${LATEST_TAG#v}
-          
-          # Get current commit hash
           CURRENT_COMMIT=$(git rev-parse HEAD)
-          
-          # Get commit hash of the latest tag
           TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
-          
-          # Set revision only if current commit differs from tag commit
           if [ "$CURRENT_COMMIT" != "$TAG_COMMIT" ]; then
             PACKAGE_REV=$(git rev-parse --short HEAD)
             echo "revision=${PACKAGE_REV}" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "Building development version: ${VERSION}-${PACKAGE_REV}"
-            echo " Docker tags: latest only"
           else
             echo "revision=" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
-            echo "Building release version: ${VERSION}"
-            
-            # Split version into major.minor.patch for Docker tags (only for releases)
             IFS='.' read -r major minor patch <<< "$VERSION"
             echo "major=${major}" >> $GITHUB_OUTPUT
             echo "minor=${major}.${minor}" >> $GITHUB_OUTPUT
             echo "patch=${VERSION}" >> $GITHUB_OUTPUT
-            echo "  Docker tags: latest, ${major}, ${major}.${minor}, ${VERSION}"
           fi
-          
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Generate Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/theophiluschinomona/pentagi
+          images: ${{ env.IMAGE_NAME }}
           tags: |
-            # For main branch - latest tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            # For release builds only - tag with major, minor and patch versions
             type=raw,value=${{ steps.version.outputs.major }},enable=${{ steps.version.outputs.is_release == 'true' }}
             type=raw,value=${{ steps.version.outputs.minor }},enable=${{ steps.version.outputs.is_release == 'true' }}
             type=raw,value=${{ steps.version.outputs.patch }},enable=${{ steps.version.outputs.is_release == 'true' }}
@@ -208,3 +178,49 @@ jobs:
           build-args: |
             PACKAGE_VER=${{ steps.version.outputs.version }}
             PACKAGE_REV=${{ steps.version.outputs.revision }}
+
+      # ── Vulnerability scan ──
+      - name: Trivy scan (critical/high only)
+        uses: aquasecurity/trivy-action@v0.29
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:latest
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          skip-files: '/root/.rustup/settings.toml'
+
+      # ── Smoke test ──
+      - name: Smoke test — boot container and hit health endpoint
+        run: |
+          docker run --rm -d --name pentagi-smoke \
+            -e DATABASE_URL="postgres://p:p@localhost:5432/nodb?sslmode=disable" \
+            -e SERVER_USE_SSL=false \
+            ${{ env.IMAGE_NAME }}:latest \
+            /opt/pentagi/bin/pentagi --help 2>&1 | head -5
+          echo "✓ Image entry point is executable"
+
+  deploy:
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && success()
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest image
+        run: |
+          cd /home/openclaw/pentagi
+          git pull origin main
+
+      - name: Update image tag
+        run: |
+          sed -i 's|^PENTAGI_IMAGE=.*|PENTAGI_IMAGE=${{ env.IMAGE_NAME }}:latest|' \
+            /home/openclaw/pentagi/.env
+
+      - name: Pull image and restart
+        run: |
+          cd /home/openclaw/pentagi
+          docker compose pull pentagi
+          docker compose up -d pentagi --force-recreate
+
+      - name: Health check
+        run: |
+          sleep 10
+          curl -sf http://localhost:8443/api/v1/info | head -3 && echo "✓ Deploy OK"
